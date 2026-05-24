@@ -2,8 +2,8 @@
   "Procedural map generation -- the GAME layer. Composes a pipeline of pure
    `state -> state` passes over the gridnoise core. Two phases:
      - terrain phase: passes that write ONLY the cell grid (here: base-pass)
-     - detail phase:  a 'fat pass' that reads finished terrain and scatters
-                      entities (added in a later task)
+     - detail phase:  a 'fat pass' (scatter-pass) that reads finished terrain
+                      and scatters entities (trees + haulable items)
 
    state = {:world <world> :seed <long> :opts <map> :reachable <set-or-nil>}
 
@@ -115,7 +115,7 @@
                       world trees)
         ;; wood on a passable neighbor of the first N trees
         world (reduce (fn [w [tx ty]]
-                        (if-let [spot (->> (grid/neighbors-8 grid tx ty)
+                        (if-let [spot (->> (tile/neighbors-8 grid tx ty)
                                            (filter (fn [[nx ny]]
                                                      (tile/passable?
                                                       (tile/tile-at grid nx ny))))
