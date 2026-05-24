@@ -5,32 +5,42 @@ A desktop colony simulation built on the JVM. Currently a console-output skeleto
 ## Run it
 
 ```
-clj -M:run
+clj -M:run            # window only
+clj -M:repl           # window + a terminal REPL (the main way to develop)
 ```
 
-You should see a tick counter and an ASCII map redraw a few times per second.
+On macOS, compose the `:mac` alias (adds the required `-XstartOnFirstThread`):
+
+```
+clj -M:mac:run
+clj -M:mac:repl
+```
+
+A window opens (paused — press play or space). The window runs on the main
+thread on every platform; closing it exits the process.
 
 ## REPL workflow (the main way to develop)
 
-```
-clj -M:repl
-```
-
-Then from your editor / REPL client:
+`clj -M:repl` opens the window AND gives you a `clojure.main` REPL prompt in
+the same terminal (it runs on a background thread, since the window owns the
+main thread). From that prompt:
 
 ```clojure
-(require 'user)
-(in-ns 'user)
+(in-ns 'user)           ; the helper namespace (loaded for you)
 
-(start!)        ; start the game loop
-(snapshot)      ; peek at the current world
-(stop!)         ; stop the loop
-(reset-world!)  ; reset to a fresh world
-
-(spawn-pawn! [10 10])  ; add a pawn at a tile
+(status)                ; loop/paused/tick/counts at a glance
+(go!)                   ; start the engine + resume ticking
+(pause!) (resume!)      ; or click the in-window button / press space
+(reset-world!)          ; fresh world
+(spawn-pawn! "Dave" [10 10])
+(tick! 100)             ; manual step
+(debug!)                ; toggle the path overlay (or press backtick)
+(quit!)                 ; close the window = exit the process
 ```
 
-You can re-evaluate any namespace (e.g. `sim.simulation`) while the game is running and the next tick uses the new code. This is the headline reason the project is in Clojure.
+Re-evaluate any `sim.*` namespace and the next frame/tick uses the new code —
+the headline reason this project is in Clojure. (Edits to the clock loop body
+itself need `(restart!)`.)
 
 ## Project layout
 

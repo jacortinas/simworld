@@ -62,9 +62,10 @@ namespaces (the directory rename happened early — never use `colony.*`).
   since `input` already depends on `ui-state` — inject only to cut NEW edges.)
 - **Pause + lifecycle.** The loop boots PAUSED. An in-window button
   (`sim.ui.hud`) and the space key toggle pause — both just flip an atom.
-  Closing the window stops the loop; under `clj -M:run` that also exits the
-  process (it "dies with the window"). The terminal renderer (`sim.render`)
-  still exists for REPL path-viz but no longer runs inside the loop.
+  The window runs on the MAIN thread (all platforms), so closing it stops the
+  loop and exits the process — window-life = process-life, under `:run` and
+  `:repl` alike. The terminal renderer (`sim.render`) still exists for REPL
+  path-viz but no longer runs inside the loop.
 
 ## Load-bearing architectural decisions
 
@@ -166,29 +167,33 @@ namespaces (the directory rename happened early — never use `colony.*`).
 
 ## REPL workflow
 
-Boot: `clj -M:repl` (nREPL + dev paths + helpers loaded).
+Boot: `clj -M:repl` (dev paths + helpers loaded). The window opens on the
+MAIN thread (uniform on all platforms; required by macOS), and a
+`clojure.main` REPL runs on a daemon background thread reading the same
+terminal. On macOS compose the `:mac` alias: `clj -M:mac:repl`.
 
 ```clojure
+(in-ns 'user)               ;; the helper namespace
 (reset-world!)              ;; fresh world
 (spawn-pawn! "Test" [5 10])
-(go!)                       ;; everything UP: window + loop + resume
+(go!)                       ;; start engine + resume (window already open)
 (status)                    ;; loop/paused/tick/counts at a glance
 (pause!) (resume!)          ;; or click the in-window button / press space
 (debug!)                    ;; toggle path overlay (or press backtick in-window)
-(tick! 100)                 ;; manual step — works even while stopped/paused
-(halt!)                     ;; everything DOWN (window + loop); REPL survives
+(tick! 100)                 ;; manual step — works even while paused
+(quit!)                     ;; close the window = exit the process
 ```
 
-Headline pair `(go!)` / `(halt!)`. Granular controls: `start!`/`stop!` (loop),
-`gdx-start!`/`gdx-stop!` (window), `pause!`/`resume!` (play).
+Window-life = process-life: the window launches with the process and closing
+it (or `(quit!)`) exits. So there is no `(go!)`/`(halt!)` window spawn/kill —
+`go!` now just starts+resumes the sim clock, `halt!` stops it (window stays).
 
-After editing source: `(require 'user :reload-all)` — preserves the world atom
-via `defonce`. Layers, commands, and the HUD reload live. **But edits to
-`run-loop!` itself need `(restart!)`** — the running thread holds the old
-compiled loop body until `start!` respawns it.
+After editing source: `(require 'user :reload-all)` — preserves the world
+atom via `defonce`. Layers, commands, and the HUD reload live. **But edits to
+`run-loop!` itself need `(restart!)`** — the running clock thread holds the
+old compiled loop body until `start!` respawns it.
 
-`clj -M:run` is the "real thing": it boots the window (paused — press play),
-and closing the window exits the process.
+`clj -M:run` is "run only" (no REPL). Closing the window exits the process.
 
 ## Open questions / not yet decided
 
@@ -215,10 +220,10 @@ and closing the window exits the process.
   map) + hierarchical pathing — the HPA* endgame noted in `sim.pathfinding`. This
   is RimWorld's model (regions + reachability cache + dirty-on-build + per-step
   path validation).
-- **GLFW thread cleanliness after `gdx-stop!`.** Daemon thread is set,
-  but if non-daemon GLFW helpers linger we might not be able to fully
-  restart libGDX in the same JVM — i.e. `(go!)` after `(halt!)` in one REPL
-  session is UNVERIFIED. Worth confirming before relying on it.
+- **GLFW restart-in-same-JVM is now moot.** The unified main-thread model
+  removed the window spawn / `(go!)`-reopens-window path, so the old "can we
+  restart libGDX in one REPL session?" question no longer applies —
+  window-life = process-life, and a fresh run is a fresh JVM.
 - **Sprite migration is DONE.** All three world layers draw 32rogues sprites
   (`sim.render.sprites` preloads the sheets; cell maps transcribed from the
   `.txt` files, validated by `sim.sprites-test`). Not yet done: animated tiles
