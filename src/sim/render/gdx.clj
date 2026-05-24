@@ -28,6 +28,7 @@
    [sim.ui.hud :as hud]
    [sim.render.sprites :as sprites]
    [sim.render.layers.terrain :as terrain]
+   [sim.render.layers.flora   :as flora-layer]
    [sim.render.layers.items   :as items-layer]
    [sim.render.layers.pawns   :as pawns-layer]
    [sim.render.layers.debug   :as debug-layer])
@@ -131,6 +132,7 @@
           (.begin b)
           (.setColor b Color/WHITE)            ; sprites draw untinted
           (terrain/draw     w b tile-size)
+          (flora-layer/draw w b tile-size)
           (items-layer/draw w b tile-size)
           (pawns-layer/draw w b tile-size (ui/selected))
           ;; Debug overlay draws LAST in the world block so paths sit on top of

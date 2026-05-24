@@ -91,6 +91,11 @@
 (defn pawn-region ^TextureRegion []
   (region :rogues (pawn-cell 0) (pawn-cell 1)))
 
+(def ^:private tree-cell [2 25])  ; tiles 26.c tree
+
+(defn tree-region ^TextureRegion []
+  (region :tiles (tree-cell 0) (tree-cell 1)))
+
 ;; --- item material -> [sheet col row] (cells span two sheets) ---
 ;; Material items read best from the tiles sheet's object rows (logs, rock);
 ;; food comes from the items sheet. See 32rogues/tiles.txt + items.txt.
