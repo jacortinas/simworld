@@ -20,7 +20,10 @@
 (def ^:const max-zoom 4.0)
 
 (defonce ui-state
-  (atom {:camera   {:x 400.0 :y 200.0 :zoom 1.0}
+  ;; zoom < 1.0 zooms IN (OrthographicCamera semantics). 0.8 is a slightly
+  ;; closer default than 1.0. gdx `create` recenters :x/:y on the map midpoint,
+  ;; so those are just an initial placeholder.
+  (atom {:camera   {:x 400.0 :y 200.0 :zoom 0.8}
          :selected nil
          :debug?   false}))
 

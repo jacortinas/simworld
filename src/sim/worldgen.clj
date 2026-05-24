@@ -20,12 +20,13 @@
 
 (def default-opts
   "Tuning knobs. Override any via the opts arg to `generate`."
-  {:width 40 :height 20 :seed 12345
+  {:width 80 :height 60 :seed 12345
    :freq 0.10 :octaves 4 :persistence 0.5
    ;; terrain thresholds (Plan 1 has no :stone -- rock arrives in a later plan)
    :water-level 0.32 :moist-low 0.42 :moist-high 0.70
-   ;; detail-phase densities (used in a later task)
-   :tree-count 24 :tree-spacing 2 :wood-count 8 :food-count 10 :stone-count 8})
+   ;; detail-phase densities -- scaled for the 80x60 default so the bigger map
+   ;; doesn't feel barren (tree placement is still capped by spaced grass)
+   :tree-count 60 :tree-spacing 2 :wood-count 20 :food-count 24 :stone-count 20})
 
 ;; --- terrain phase -------------------------------------------------------
 
