@@ -75,11 +75,15 @@
 
 (deftest reset-world-generate-opt
   (testing "reset-world! {:generate? true} produces a varied, populated world"
-    (try
-      (world/reset-world! {:generate? true :seed 7 :width 48 :height 48})
-      (let [w @world/world]
-        (is (> (count (set (:tiles (:grid w)))) 1) "more than one terrain type")
-        (is (pos? (count (entity/trees w))))
-        (is (pos? (count (entity/items w)))))
-      (finally
-        (world/reset-world! {})))))
+    ;; This test mutates the shared world/world atom. Capture and restore the
+    ;; exact prior value so it can't bleed into other tests regardless of run
+    ;; order.
+    (let [before @world/world]
+      (try
+        (world/reset-world! {:generate? true :seed 7 :width 48 :height 48})
+        (let [w @world/world]
+          (is (> (count (set (:tiles (:grid w)))) 1) "more than one terrain type")
+          (is (pos? (count (entity/trees w))))
+          (is (pos? (count (entity/items w)))))
+        (finally
+          (reset! world/world before))))))

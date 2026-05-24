@@ -18,7 +18,7 @@
 
    The shape:
      {:clock     0          ; tick counter
-      :grid      {...}      ; tiles + width/height (see colony.tile)
+      :grid      {...}      ; tiles + width/height (see sim.tile)
       :entities  {id ent}   ; entities by id
       :events    []         ; pending events (consumed by sim each tick)
       :rng-seed  12345}"
@@ -33,13 +33,13 @@
 
 ;; ---------------------------------------------------------------------------
 ;; The atom. `defonce` is critical — it survives ns reloads, so we can
-;; recompile colony.sim while the game is running.
+;; recompile sim.simulation while the game is running.
 ;; ---------------------------------------------------------------------------
 
 (defonce world (atom (initial-world {})))
 
 ;; ---------------------------------------------------------------------------
-;; Convenience mutators. Most code should swap! the world via colony.sim;
+;; Convenience mutators. Most code should swap! the world via sim.simulation;
 ;; these are for setup and REPL interactivity.
 ;; ---------------------------------------------------------------------------
 
