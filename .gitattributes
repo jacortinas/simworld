@@ -1,0 +1,8 @@
+# Force LF in the repo AND in every working tree (Windows included).
+# eol=lf overrides each machine's core.autocrlf, so every clone is identical.
+* text=auto eol=lf
+
+# Binary assets — never touch their bytes (line-ending conversion would corrupt them).
+*.png   binary
+*.hprof binary
+*.npy   binary
