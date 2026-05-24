@@ -55,6 +55,9 @@
         base-freq   (double freq)
         octaves     (long octaves)
         persistence (double persistence)]
+    ;; Guard the silent (/ 0.0 0.0) -> NaN that octaves=0 would produce; this
+    ;; is a reusable-library boundary, so fail loud at construction time.
+    (assert (pos? octaves) "gridnoise.noise/field: :octaves must be >= 1")
     (fn [x y]
       (let [x (double x) y (double y)]
         (loop [o 0, f base-freq, amp 1.0, sum 0.0, norm 0.0]
