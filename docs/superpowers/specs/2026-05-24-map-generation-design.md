@@ -194,10 +194,40 @@ v1 reuses existing keywords only: `:grass`, `:dirt`, `:gravel`, `:water`,
 `:stone`. No new terrain definitions or sprites. `:sand`/`:soil` with a
 `:fertility` field is a trivial later add when farming lands.
 
-## The pipeline — four passes
+## The pipeline — two phases, four passes
 
-`generate` runs these in order. Plan 1 ships passes 1 and 4; Plan 2 adds
-passes 2 and 3.
+The passes fall into two ordered **phases**, separated by a real data
+dependency, not just tidiness:
+
+1. **Terrain phase** — passes that write *only* the grid of cells
+   (`:tiles`/`:cells`): the noise base and the CA rock. Output: finished
+   ground. Mostly `gridnoise` primitives + a thin game classifier.
+2. **Entity/detail phase** — a "fat pass" (and helpers) that *reads* the
+   finished terrain and decorates it: trees on grass, loot near features, later
+   ore/villages/spawns. This is where game intelligence lives.
+
+The ordering is forced by data flow: the detail phase needs terrain to be
+**final** — scatter must know where grass vs. rock vs. water is, and the
+connectivity guard must flood-fill the finished passability map. That
+dependency travels through `state`: phase 1 sets `:world`/`:grid`, phase 2
+reads it. Mapping to the passes below:
+
+- Passes 1–2 (base noise, CA rock) = **terrain phase**
+- Pass 3 (connectivity) = the **boundary** — consumes finished terrain,
+  produces `:reachable`
+- Pass 4 (scatter) = **entity/detail phase**, the fat pass
+
+Two cautions so the framing doesn't mislead:
+
+- **"Fat pass" is a phase, not one giant function.** Inside it, keep lean
+  composable helpers (`rejection-sampler`, `place-near-feature`) — the phase is
+  fat, the functions stay small (composability rule 3).
+- **The detail phase is inherently game-specific** — it touches
+  `make-tree`/`make-item`, so it lives entirely in `sim.worldgen`, never in
+  `gridnoise`. `gridnoise` makes shapes; it never learns what a tree is.
+
+`generate` runs the passes in order. Plan 1 ships passes 1 and 4 (a minimal
+terrain phase + the detail phase); Plan 2 adds passes 2 and 3.
 
 ### Pass 1 — Base (value noise)
 
