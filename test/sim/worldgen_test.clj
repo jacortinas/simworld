@@ -72,3 +72,14 @@
           b (gen test-opts)]
       (is (= (:grid a) (:grid b)))
       (is (= (strip a) (strip b))))))
+
+(deftest reset-world-generate-opt
+  (testing "reset-world! {:generate? true} produces a varied, populated world"
+    (try
+      (world/reset-world! {:generate? true :seed 7 :width 48 :height 48})
+      (let [w @world/world]
+        (is (> (count (set (:tiles (:grid w)))) 1) "more than one terrain type")
+        (is (pos? (count (entity/trees w))))
+        (is (pos? (count (entity/items w)))))
+      (finally
+        (world/reset-world! {})))))

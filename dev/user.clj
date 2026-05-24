@@ -21,7 +21,11 @@
    [sim.events    :as events]
    [sim.job       :as job]
    [sim.log       :as slog]
-   [sim.save      :as save]))
+   [sim.save      :as save]
+   [sim.worldgen  :as worldgen]
+   [gridnoise.noise :as noise]
+   [gridnoise.grid  :as ngrid]
+   [gridnoise.image :as nimage]))
 
 (defn start! [] (clock/start!))   ; spawns the engine thread (boots PAUSED)
 (defn stop!  [] (clock/stop!))
@@ -118,6 +122,16 @@
 (defn reset-world!
   ([] (world/reset-world! {}))
   ([opts] (world/reset-world! opts)))
+
+(defn generate-world!
+  "Reset to a freshly GENERATED world (terrain + trees + haulable items) and
+   print status. Pass {:seed n :width w :height h} to vary it.
+     (generate-world! {:seed 42})  ;; then (spawn-pawn! ...) (go!)"
+  ([] (generate-world! {}))
+  ([opts]
+   (world/reset-world! (assoc opts :generate? true))
+   (status)
+   :generated))
 
 (defn spawn-pawn!
   ([pos] (world/spawn-pawn! pos))

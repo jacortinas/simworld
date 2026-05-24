@@ -7,8 +7,9 @@
 
    When/if contention shows up, partition by *aspect* — never by entity."
   (:require
-   [sim.entity :as entity]
-   [sim.tile   :as tile]))
+   [sim.entity  :as entity]
+   [sim.tile    :as tile]
+   [sim.worldgen :as worldgen]))
 
 (set! *warn-on-reflection* true)
 
@@ -43,8 +44,15 @@
 ;; ---------------------------------------------------------------------------
 
 (defn reset-world!
+  "Reset the world atom. With {:generate? true}, run procedural generation
+   (sim.worldgen/generate) over the fresh world; otherwise leave it
+   empty-grass. opts also accepts :width :height :seed and worldgen tuning."
   ([] (reset-world! {}))
-  ([opts] (reset! world (initial-world opts))))
+  ([opts]
+   (let [w (initial-world opts)]
+     (reset! world (if (:generate? opts)
+                     (worldgen/generate w opts)
+                     w)))))
 
 (defn spawn-pawn!
   "Drop a new pawn into the live world at [x y]."
