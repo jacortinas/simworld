@@ -366,6 +366,38 @@ via `gridnoise.grid/flood-fill`) layered in as two new pure passes, scatter
 constrained to the reachable set, plus connectivity/band tests. Zero changes to
 Plan 1's passes — the pipeline is the extension point.
 
+## Future directions (rationale for the split — not v1 scope)
+
+The two-layer + data-pipeline design is chosen so future map types are
+*additions*, not rewrites. None of the below is built now; it justifies the
+investment:
+
+- **A map type = a pass vector.** A `pipelines` registry (`:surface`,
+  `:cavern`, `:dungeon`, `:space`) over one `generate`. Different worlds reuse
+  the same engine, state threading, and per-pass seeds — only the vector
+  changes.
+- **Caves are nearly free** — underground is mostly-rock with carved space,
+  i.e. the planned CA pass inverted.
+- **`gridnoise` grows a toolbox.** Noise is primitive #1; dungeons/villages add
+  *structural* primitives (BSP, room/corridor carving, maze, drunkard's walk)
+  and *constraint* approaches (WFC). All reuse `grid` + `flood-fill` + `ca-step`
+  built now — the investment compounds.
+- **A pass is `state → state`, not "a noise step."** The pipeline is
+  algorithm-agnostic, which is what lets it host generators we haven't designed.
+
+Known boundaries where the abstraction will need to stretch:
+
+- **Forward-only vs. backtracking.** The `reduce` pipeline excels at additive/
+  layered generation. Generate-test-backtrack (WFC) and agent-simulated villages
+  are expressible, but the backtracking/intelligence lives *inside* one fat
+  pass — the pipeline won't provide it.
+- **2D → z-levels.** Space / multi-floor underground want a 3rd dimension: an
+  extension of `gridnoise.grid` (stacked or 3D cells), and the game's 2D
+  `:tiles`/render/pathfinding would have to follow.
+- **State keys are the inter-pass contract.** As `state` accumulates keys
+  (`:rooms`, `:regions`, `:roads`), later passes depend on earlier ones setting
+  them; document those keys as deliberately as function signatures.
+
 ## Open questions / deferred
 
 - Tuning constants (thresholds, CA fill %, iteration count, tree spacing, item
