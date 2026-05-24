@@ -15,22 +15,34 @@
          ;; --- LWJGL override ---
          ;; libGDX 1.13.1 pins LWJGL 3.3.3, which predates JDK 24's JNI
          ;; version and emits "[LWJGL] Unsupported JNI version detected".
-         ;; 3.4.1 recognizes it. ALL six modules must share ONE version —
-         ;; mixing 3.3.x and 3.4.x crashes at runtime. Top-level decls here
-         ;; override libGDX's transitive 3.3.3. natives-windows is for THIS
-         ;; machine; add natives-linux / natives-macos to ship elsewhere.
-         org.lwjgl/lwjgl                            {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl$natives-windows            {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-glfw                       {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-glfw$natives-windows       {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-jemalloc                   {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-jemalloc$natives-windows   {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-openal                     {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-openal$natives-windows     {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-opengl                     {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-opengl$natives-windows     {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-stb                        {:mvn/version "3.4.1"}
-         org.lwjgl/lwjgl-stb$natives-windows        {:mvn/version "3.4.1"}}
+         ;; 3.4.1 recognizes it. ALL modules must share ONE version —
+         ;; mixing 3.3.x and 3.4.x crashes at runtime. We list natives for
+         ;; every platform we ship to (windows + macOS intel + macOS arm64);
+         ;; only the matching one loads at runtime, the rest are inert.
+         org.lwjgl/lwjgl                              {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl$natives-windows              {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl$natives-macos                {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl$natives-macos-arm64          {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw                         {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw$natives-windows         {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw$natives-macos           {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw$natives-macos-arm64     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc                     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc$natives-windows     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc$natives-macos       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc$natives-macos-arm64 {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal                       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal$natives-windows       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal$natives-macos         {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal$natives-macos-arm64   {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl                       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl$natives-windows       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl$natives-macos         {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl$natives-macos-arm64   {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb                          {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb$natives-windows          {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb$natives-macos            {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb$natives-macos-arm64      {:mvn/version "3.4.1"}}
 
  :aliases
  {;; clj -M:dev   — REPL with dev helpers on the path
@@ -55,7 +67,15 @@
                ;; warns on every Unsafe call; 'allow' silences it.
                "--sun-misc-unsafe-memory-access=allow"]}
 
-  ;; clj -M:repl  — nREPL server with dev deps + ZGC
+  ;; clj -M:mac:run / clj -M:mac:repl — macOS only.
+  ;; -XstartOnFirstThread is REQUIRED on macOS (GLFW must own the main
+  ;; thread) and is unrecognized on Windows/Linux, so it lives here and is
+  ;; opted in by composing the alias. clj concatenates :jvm-opts across
+  ;; composed aliases, so this adds onto whatever :run/:repl already supply.
+  :mac
+  {:jvm-opts ["-XstartOnFirstThread"]}
+
+  ;; clj -M:repl  — terminal REPL (window + clojure.main REPL); see :main-opts
   :repl
   {:extra-paths ["dev" "test"]
    :extra-deps  {criterium/criterium                       {:mvn/version "0.4.6"}
