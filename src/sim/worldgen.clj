@@ -1,0 +1,85 @@
+(ns sim.worldgen
+  "Procedural map generation -- the GAME layer. Composes a pipeline of pure
+   `state -> state` passes over the gridnoise core. Two phases:
+     - terrain phase: passes that write ONLY the cell grid (here: base-pass)
+     - detail phase:  a 'fat pass' that reads finished terrain and scatters
+                      entities (added in a later task)
+
+   state = {:world <world> :seed <long> :opts <map> :reachable <set-or-nil>}
+
+   Determinism: the terrain phase seeds gridnoise via the master seed; the
+   detail phase derives its own java.util.Random from seed + offset, so passes
+   are order-insensitive (see the spec's Determinism section)."
+  (:require
+   [gridnoise.noise :as noise]
+   [gridnoise.grid  :as grid]
+   [sim.tile        :as tile]
+   [sim.entity      :as entity]))
+
+(set! *warn-on-reflection* true)
+
+(def default-opts
+  "Tuning knobs. Override any via the opts arg to `generate`."
+  {:width 40 :height 20 :seed 12345
+   :freq 0.10 :octaves 4 :persistence 0.5
+   ;; terrain thresholds (Plan 1 has no :stone -- rock arrives in a later plan)
+   :water-level 0.32 :moist-low 0.42 :moist-high 0.70
+   ;; detail-phase densities (used in a later task)
+   :tree-count 24 :tree-spacing 2 :wood-count 8 :food-count 10 :stone-count 8})
+
+;; --- terrain phase -------------------------------------------------------
+
+(defn classify
+  "Map an elevation + moisture sample to a terrain keyword. Plan 1 emits only
+   passable ground + water, so the map is trivially connected (no connectivity
+   guard needed yet); :stone is introduced later alongside the guard."
+  [^double elev ^double moist {:keys [water-level moist-low moist-high]}]
+  (cond
+    (< elev water-level) :water
+    (< moist moist-low)  :gravel
+    (< moist moist-high) :dirt
+    :else                :grass))
+
+(defn build-terrain-grid
+  "Pure: produce the game grid {:width :height :tiles [...]} from noise.
+   Uses gridnoise to make the shape, then renames :cells -> :tiles for the
+   game world (the only naming bridge between core and game)."
+  [seed {:keys [width height freq octaves persistence] :as opts}]
+  (let [elev  (noise/field {:seed (+ (long seed) 1) :freq freq
+                            :octaves octaves :persistence persistence})
+        moist (noise/field {:seed (+ (long seed) 2) :freq freq
+                            :octaves octaves :persistence persistence})
+        g     (grid/generate width height
+                             (fn [x y] (classify (elev x y) (moist x y) opts)))]
+    {:width width :height height :tiles (:cells g)}))
+
+(defn base-pass
+  "Terrain phase: write the cell grid from noise. Reads/writes only :world's
+   :grid, nothing entity-related."
+  [state]
+  (assoc-in state [:world :grid]
+            (build-terrain-grid (:seed state) (:opts state))))
+
+;; --- pipeline ------------------------------------------------------------
+
+(defn init-state
+  "Build the initial pipeline state. Seed resolution: opts :seed, else the
+   world's :rng-seed, else the default."
+  [world opts]
+  (let [seed (or (:seed opts) (:rng-seed world) (:seed default-opts))
+        opts (merge default-opts opts {:seed seed})]
+    {:world world :seed (long seed) :opts opts :reachable nil}))
+
+(def default-pipeline
+  "Ordered vector of passes. Plan 1: terrain phase only (detail phase added in
+   a later task). The pipeline is DATA -- add/remove/reorder by editing this
+   vector, or override per-call with the :passes opt."
+  [base-pass])
+
+(defn generate
+  "Pure: (world opts) -> world'. Runs the pipeline (or opts :passes) by
+   reducing each pass over the initial state."
+  ([world] (generate world {}))
+  ([world opts]
+   (let [passes (:passes opts default-pipeline)]
+     (:world (reduce (fn [s pass] (pass s)) (init-state world opts) passes)))))
