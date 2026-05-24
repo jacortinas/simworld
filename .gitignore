@@ -1,0 +1,23 @@
+.cpcache/
+.clj-kondo/
+.lsp/
+target/
+classes/
+*.iml
+.idea/
+.vscode/
+.calva/
+.nrepl-port
+.shadow-cljs/
+node_modules/
+
+# Saves and runtime artifacts
+saves/
+profiles/
+flamegraphs/
+*.npy
+*.hprof
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,142 @@
+(ns sim.job-test
+  "Tests for the job FSMs in sim.job — especially the 4-phase haul job, the
+   most intricate pure logic in the sim. All headless: jobs are pure
+   (world,pawn)->world, so we can drive them tick-by-tick and assert on the
+   resulting world without any rendering."
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [sim.world  :as world]
+   [sim.entity :as entity]
+   [sim.tile   :as tile]
+   [sim.log    :as log]
+   [sim.job    :as job]))
+
+(defn- setup
+  "Build a 12x12 all-grass world with a hauler pawn and one :wood item.
+   Returns [world pawn-id item-id]."
+  [pawn-pos item-pos]
+  (let [w    (world/initial-world {:width 12 :height 12})
+        pawn (entity/make-pawn "hauler" pawn-pos)
+        item (entity/make-item :wood item-pos)]
+    [(-> w (entity/add-entity pawn) (entity/add-entity item))
+     (:id pawn)
+     (:id item)]))
+
+(defn- drive
+  "Call job/advance until the pawn's job is done? (or max-steps hit). Re-fetches
+   the pawn each step: advance returns a *world*, and the pawn's job/pos mutate
+   between calls — this mirrors how sim.ai/decide drives a job."
+  [world pid max-steps]
+  (loop [w world n 0]
+    (let [j (:job (entity/entity w pid))]
+      (if (or (nil? j) (job/done? j) (>= n max-steps))
+        w
+        (recur (job/advance w (entity/entity w pid)) (inc n))))))
+
+;; ---------------------------------------------------------------------------
+;; Haul — full lifecycle
+;; ---------------------------------------------------------------------------
+
+(deftest haul-happy-path
+  (let [[w0 pid iid] (setup [0 0] [3 0])
+        dest         [6 0]
+        w1           (entity/update-entity w0 pid assoc :job (job/haul iid dest))
+        wf           (drive w1 pid 200)
+        pawn         (entity/entity wf pid)
+        item         (entity/entity wf iid)]
+    (is (job/complete? (:job pawn)) "haul job reaches :complete")
+    (is (nil? (:carrying pawn))     "pawn is no longer carrying")
+    (is (= dest (:pos pawn))        "pawn ends at the destination")
+    (is (= dest (:pos item))        "item left on the ground at destination")
+    (is (nil? (:carried-by item))   "item is no longer carried")
+    (is (seq (log/of-type wf :job/pickup)) "pickup was logged")
+    (is (seq (log/of-type wf :job/drop))   "drop was logged")
+    (is (seq (log/of-type wf :job/complete)) "completion was logged")))
+
+;; ---------------------------------------------------------------------------
+;; Haul — individual phases
+;; ---------------------------------------------------------------------------
+
+(deftest haul-pickup-phase
+  (testing "picking up binds item<->pawn and clears the item's ground pos"
+    (let [[w0 pid iid] (setup [3 0] [3 0])   ; pawn standing on the item
+          w1   (entity/update-entity w0 pid assoc :job
+                                     (assoc (job/haul iid [6 0]) :phase :pickup))
+          w2   (job/advance w1 (entity/entity w1 pid))
+          pawn (entity/entity w2 pid)
+          item (entity/entity w2 iid)]
+      (is (= iid (:carrying pawn))   "pawn now carries the item")
+      (is (= pid (:carried-by item)) "item knows its carrier")
+      (is (nil? (:pos item))         "carried item has no ground position")
+      (is (= :go-to-dest (get-in pawn [:job :phase])) "advances to :go-to-dest"))))
+
+(deftest haul-drop-phase
+  (testing "dropping places the item at the pawn's tile and completes"
+    (let [[w0 pid iid] (setup [6 0] [3 0])
+          w1   (-> w0
+                   (entity/update-entity pid assoc
+                                         :carrying iid
+                                         :job (assoc (job/haul iid [6 0]) :phase :drop))
+                   (entity/update-entity iid assoc :carried-by pid :pos nil))
+          w2   (job/advance w1 (entity/entity w1 pid))
+          pawn (entity/entity w2 pid)
+          item (entity/entity w2 iid)]
+      (is (job/complete? (:job pawn))  "job completes on drop")
+      (is (nil? (:carrying pawn))      "pawn stops carrying")
+      (is (= [6 0] (:pos item))        "item dropped at the pawn's tile")
+      (is (nil? (:carried-by item))    "item is free again"))))
+
+(deftest haul-fails-when-item-disappears
+  (testing "an item that vanishes mid-haul fails the job rather than NPEing"
+    (let [[w0 pid iid] (setup [0 0] [3 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/haul iid [6 0]))
+          w2   (entity/remove-entity w1 iid)            ; item despawns
+          w3   (job/advance w2 (entity/entity w2 pid))]
+      (is (job/failed? (:job (entity/entity w3 pid))))
+      (is (seq (log/of-type w3 :job/failed)) "failure was logged"))))
+
+;; ---------------------------------------------------------------------------
+;; go-to — completion and failure
+;; ---------------------------------------------------------------------------
+
+(deftest go-to-completes
+  (let [[w0 pid _] (setup [0 0] [0 0])
+        w1   (entity/update-entity w0 pid assoc :job (job/go-to [4 4]))
+        wf   (drive w1 pid 200)
+        pawn (entity/entity wf pid)]
+    (is (job/complete? (:job pawn)))
+    (is (= [4 4] (:pos pawn)) "pawn arrives at the target tile")))
+
+(deftest go-to-fails-when-target-unreachable
+  (testing "pathing to an impassable tile fails the job on the first step"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (-> w0
+                   (update :grid tile/set-tile 5 5 :wall)
+                   (entity/update-entity pid assoc :job (job/go-to [5 5])))
+          w2   (job/advance w1 (entity/entity w1 pid))]
+      (is (job/failed? (:job (entity/entity w2 pid)))))))
+
+;; ---------------------------------------------------------------------------
+;; assign — the one path all assignment routes through
+;; ---------------------------------------------------------------------------
+
+(deftest assign-sets-job-and-logs
+  (let [[w0 pid _] (setup [0 0] [0 0])
+        w1   (job/assign w0 pid (job/go-to [3 3]) job/forced-by-player)
+        pawn (entity/entity w1 pid)
+        es   (log/of-type w1 :job/assigned)]
+    (is (= :go-to  (get-in pawn [:job :type])))
+    (is (= [3 3]   (get-in pawn [:job :target])))
+    (is (= :forced (get-in pawn [:job :priority])) "override merged onto the job")
+    (is (= :player (get-in pawn [:job :source])))
+    (is (= 1 (count es)) "exactly one :job/assigned logged")
+    (is (= pid  (:pawn   (first es))))
+    (is (= [3 3] (:target (first es))) "entry derives target from the job map")))
+
+(deftest assign-derives-haul-fields-from-job
+  (let [[w0 pid iid] (setup [0 0] [3 0])
+        w1 (job/assign w0 pid (job/haul iid [6 0]) job/forced-by-player)
+        e  (first (log/of-type w1 :job/assigned))]
+    (is (= :haul (:job e)))
+    (is (= iid   (:item e))         "haul logs the item id")
+    (is (= [6 0] (:destination e))  "haul logs the destination")))

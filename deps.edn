@@ -1,0 +1,79 @@
+{:paths ["src" "resources"]
+
+ :deps  {org.clojure/clojure                       {:mvn/version "1.12.0"}
+         com.taoensso/nippy                        {:mvn/version "3.4.2"}
+         com.taoensso/tufte                        {:mvn/version "2.6.3"}
+
+         ;; libGDX — graphics, windowing, input.
+         ;; gdx is the engine core; gdx-backend-lwjgl3 is the desktop
+         ;; backend; gdx-platform :natives-desktop is the native binaries
+         ;; (OpenGL, GLFW) for win/mac/linux.
+         com.badlogicgames.gdx/gdx                              {:mvn/version "1.13.1"}
+         com.badlogicgames.gdx/gdx-backend-lwjgl3               {:mvn/version "1.13.1"}
+         com.badlogicgames.gdx/gdx-platform$natives-desktop     {:mvn/version "1.13.1"}
+
+         ;; --- LWJGL override ---
+         ;; libGDX 1.13.1 pins LWJGL 3.3.3, which predates JDK 24's JNI
+         ;; version and emits "[LWJGL] Unsupported JNI version detected".
+         ;; 3.4.1 recognizes it. ALL six modules must share ONE version —
+         ;; mixing 3.3.x and 3.4.x crashes at runtime. Top-level decls here
+         ;; override libGDX's transitive 3.3.3. natives-windows is for THIS
+         ;; machine; add natives-linux / natives-macos to ship elsewhere.
+         org.lwjgl/lwjgl                            {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl$natives-windows            {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw                       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-glfw$natives-windows       {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc                   {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-jemalloc$natives-windows   {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal                     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-openal$natives-windows     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl                     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-opengl$natives-windows     {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb                        {:mvn/version "3.4.1"}
+         org.lwjgl/lwjgl-stb$natives-windows        {:mvn/version "3.4.1"}}
+
+ :aliases
+ {;; clj -M:dev   — REPL with dev helpers on the path
+  :dev
+  {:extra-paths ["dev" "test"]
+   :extra-deps  {criterium/criterium                       {:mvn/version "0.4.6"}
+                 com.clojure-goes-fast/clj-async-profiler  {:mvn/version "1.6.0"}
+                 nrepl/nrepl                               {:mvn/version "1.3.0"}}}
+
+  ;; clj -M:run   — start the game
+  :run
+  {:main-opts ["-m" "sim.core"]
+   :jvm-opts  ["-XX:+UseZGC"
+               "-Xmx4g"
+               "-Xms1g"
+               ;; libGDX/LWJGL load native .dll/.so via System.load — JDK now
+               ;; restricts this and will hard-block it in a future release.
+               ;; This grants the unnamed module native access and silences it.
+               "--enable-native-access=ALL-UNNAMED"
+               ;; LWJGL still uses sun.misc.Unsafe for fast memory access
+               ;; (mid-migration to the Foreign Function & Memory API). JDK 24
+               ;; warns on every Unsafe call; 'allow' silences it.
+               "--sun-misc-unsafe-memory-access=allow"]}
+
+  ;; clj -M:repl  — nREPL server with dev deps + ZGC
+  :repl
+  {:extra-paths ["dev" "test"]
+   :extra-deps  {criterium/criterium                       {:mvn/version "0.4.6"}
+                 com.clojure-goes-fast/clj-async-profiler  {:mvn/version "1.6.0"}
+                 nrepl/nrepl                               {:mvn/version "1.3.0"}}
+   :main-opts   ["-m" "nrepl.cmdline" "--interactive"]
+   :jvm-opts    ["-XX:+UseZGC"
+                 "-Xmx4g"
+                 "-Xms1g"
+                 ;; clj-async-profiler needs these
+                 "-Djdk.attach.allowAttachSelf"
+                 "-XX:+UnlockDiagnosticVMOptions"
+                 "-XX:+DebugNonSafepoints"
+                 ;; libGDX/LWJGL native loading + Unsafe (see :run alias)
+                 "--enable-native-access=ALL-UNNAMED"
+                 "--sun-misc-unsafe-memory-access=allow"]}
+
+  :test
+  {:extra-paths ["test"]
+   :extra-deps  {io.github.cognitect-labs/test-runner {:git/tag "v0.5.1" :git/sha "dfb30dd"}}
+   :main-opts   ["-m" "cognitect.test-runner"]}}}
