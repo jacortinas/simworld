@@ -3,6 +3,7 @@
    [clojure.test :refer [deftest is testing]]
    [sim.world :as world]
    [sim.tile :as tile]
+   [sim.entity :as entity]
    [sim.worldgen :as wg]))
 
 (def ^:private test-opts {:seed 7 :width 48 :height 48})
@@ -32,3 +33,42 @@
     (let [a (gen (assoc test-opts :passes [wg/base-pass]))
           b (gen (assoc test-opts :passes [wg/base-pass]))]
       (is (= (:grid a) (:grid b))))))
+
+(deftest scatter-places-trees-only-on-grass
+  (testing "every tree sits on a :grass tile"
+    (let [w    (gen test-opts)
+          grid (:grid w)]
+      (is (pos? (count (entity/trees w))) "at least one tree placed")
+      (doseq [t (entity/trees w)]
+        (let [[x y] (:pos t)]
+          (is (= :grass (tile/tile-at grid x y))
+              (str "tree off-grass at " [x y])))))))
+
+(deftest scatter-places-valid-items
+  (testing "items are ground items with known materials"
+    (let [w     (gen test-opts)
+          items (entity/items w)]
+      (is (pos? (count items)) "at least one item placed")
+      (doseq [i items]
+        (is (= :item (:kind i)))
+        (is (some? (:pos i)))
+        (is (#{:wood :food :stone} (:material i)))))))
+
+(deftest tree-spacing-respected
+  (testing "no two trees are within the tree-spacing (Chebyshev) distance"
+    (let [w     (gen test-opts)
+          spots (map :pos (entity/trees w))]
+      (doseq [[ax ay] spots [bx by] spots
+              :when (not= [ax ay] [bx by])]
+        (is (>= (max (Math/abs (- ax bx)) (Math/abs (- ay by))) 2)
+            (str "trees too close: " [ax ay] [bx by]))))))
+
+(deftest full-generation-is-deterministic
+  (testing "same seed -> identical grid AND identical entity layout (modulo :id)"
+    (let [strip (fn [w] (->> (entity/all-entities w)
+                             (map #(dissoc % :id))
+                             set))
+          a (gen test-opts)
+          b (gen test-opts)]
+      (is (= (:grid a) (:grid b)))
+      (is (= (strip a) (strip b))))))
