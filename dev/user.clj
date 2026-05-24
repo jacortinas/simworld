@@ -50,24 +50,20 @@
   nil)
 
 (defn go!
-  "Everything UP: open the window, start the engine thread, and resume
-   ticking — the everyday 'just run it' command, replacing the
-   gdx-start! / start! / resume! three-step. Idempotent: each underlying
-   call no-ops if already active. Opposite: (halt!)."
+  "Start the SIM running: bring the clock up (idempotent) and resume ticking,
+   then print status. The window is already open (it owns the main thread and
+   launches with the process), so this no longer touches the window."
   []
-  (gdx/start!)
   (clock/start!)
   (clock/resume!)
   (status)
   :go)
 
 (defn halt!
-  "Everything DOWN: stop the loop and close the window — but leave the REPL
-   (and the world atom, via defonce) alive to keep iterating. The opposite
-   of (go!). Idempotent: stops are no-ops if already down."
+  "Stop the SIM clock (pawns/jobs/needs freeze). The window stays open and
+   keeps rendering. Use (quit!) to actually close the window / exit."
   []
   (clock/stop!)
-  (gdx/stop!)          ; dispose hook would also stop the loop; stop! is idempotent
   :halted)
 
 (defn restart!
@@ -83,13 +79,9 @@
   (status)
   :restarted)
 
-(defn gdx-start!
-  "Open the libGDX window. Sim ticks independently — start the loop too
-   with `(start!)` if you want it running."
-  [] (gdx/start!))
-
-(defn gdx-stop!
-  "Close the libGDX window."
+(defn quit!
+  "Close the libGDX window, which ends the process (window-life = process-life
+   under the unified main-thread model)."
   [] (gdx/stop!))
 
 (defn camera
@@ -250,7 +242,7 @@
   ;; Typical session:
   (reset-world!)
   (spawn-pawn! "Dave" [3 3])
-  (go!)               ;; open window + start engine + resume — the one-liner
+  (go!)               ;; start engine + resume (window is already open)
   (status)            ;; loop/paused/tick/counts at a glance
   (tick! 100)         ;; manual stepping — works whether the loop runs or not
   (pause!) (resume!)  ;; or click the in-window button / press space

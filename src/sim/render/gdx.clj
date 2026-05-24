@@ -19,6 +19,7 @@
    Swapping batch.setProjectionMatrix between them is the entire trick to
    'this scrolls, that stays put'. World-cam state is synced each frame
    from sim.ui-state (plain data) — the Java camera is a derived view."
+  (:refer-clojure :exclude [run!])      ; our run! shadows clojure.core/run! (unused here)
   (:require
    [sim.world :as world]
    [sim.ui-state :as ui]
@@ -45,8 +46,6 @@
 (def ^:const tile-size  32)
 (def ^:const ^:private screen-w   800)
 (def ^:const ^:private screen-h   600)
-
-(defonce ^:private app-thread (atom nil))
 
 (defn- poll-camera-keys!
   "Pan the camera from held arrow / WASD keys. Polled once per frame rather
@@ -160,28 +159,19 @@
         (when-let [f @font]  (.dispose ^BitmapFont  f))
         (when-let [p @pixel] (.dispose ^Texture     p))))))
 
-(defn- run-app
-  "Blocks the calling thread. Must be invoked from a Thread we spawned —
-   never from the REPL thread, which would freeze nREPL."
-  [world-atom]
-  (let [cfg (doto (Lwjgl3ApplicationConfiguration.)
-              (.setTitle "sim")
-              (.setWindowedMode 800 600)
-              (.useVsync true)
-              (.setForegroundFPS 60))]
-    (Lwjgl3Application. (make-listener world-atom) cfg)))
-
-(defn start!
-  "Open the libGDX window on a dedicated thread. Returns the Thread handle
-   immediately. If the window is already open, no-ops."
-  []
-  (if (and @app-thread (.isAlive ^Thread @app-thread))
-    :already-running
-    (let [t (Thread. ^Runnable #(run-app world/world) "sim-gdx")]
-      (.setDaemon t true)
-      (.start t)
-      (reset! app-thread t)
-      :started)))
+(defn run!
+  "Open the libGDX window and run it ON THE CALLING THREAD, which MUST be the
+   process main thread (a hard macOS requirement, and now uniform on every
+   platform). Blocks until the window closes. `sim.core/-main` calls this on
+   the main thread; `dispose` (window close) stops the sim clock."
+  ([] (run! world/world))
+  ([world-atom]
+   (let [cfg (doto (Lwjgl3ApplicationConfiguration.)
+               (.setTitle "sim")
+               (.setWindowedMode 800 600)
+               (.useVsync true)
+               (.setForegroundFPS 60))]
+     (Lwjgl3Application. (make-listener world-atom) cfg))))
 
 (defn stop!
   "Ask the libGDX application to exit gracefully. Safe to call from REPL."
