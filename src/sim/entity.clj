@@ -52,6 +52,20 @@
    :carried-by nil})
 
 ;; ---------------------------------------------------------------------------
+;; Trees -- passable flora. A* reads only terrain, so trees never affect
+;; pathfinding (RimWorld's model: walk through, chop later). Inert until a
+;; future chop job; rendered now.
+;; ---------------------------------------------------------------------------
+
+(defn make-tree
+  "Construct a tree entity at [x y]. Pure -- does NOT insert into the world."
+  [[x y]]
+  {:id      (next-id!)
+   :kind    :tree
+   :pos     [x y]
+   :species :tree})
+
+;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
 ;; Defined before any helpers that consume them so a cold-start load resolves
 ;; forward references correctly (REPL reloads are forgiving; `clj -M` is not).
@@ -76,6 +90,11 @@
   "Sequence of all item entities."
   [world]
   (filter #(= :item (:kind %)) (all-entities world)))
+
+(defn trees
+  "Sequence of all tree entities."
+  [world]
+  (filter #(= :tree (:kind %)) (all-entities world)))
 
 (defn items-at
   "Sequence of all items currently at [x y]."
