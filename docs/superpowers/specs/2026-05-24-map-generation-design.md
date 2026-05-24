@@ -45,6 +45,12 @@ Generation must be **deterministic**: same seed → byte-identical map.
 - New terrain types (`:sand`, fertile `:soil` with `:fertility`) — deferred
   until farming arrives. v1 reuses existing terrain keywords, so no new sprites.
 - Full biome worldgen (temperature/rainfall maps, multiple biomes) — premature.
+- A **separate repo / published `gridnoise` library** — the generic core is
+  built dependency-clean now (own package, no game imports) but stays in this
+  repo. Extraction to `:local/root` / git-dep / Clojars is deferred until a real
+  second consumer exists. Packaging adds friction, not decoupling.
+- Migrating `sim.tile` onto `gridnoise.grid` — the game's existing grid/render/
+  pathfinding code is left untouched; this is a possible future cleanup.
 - Tying generation to a "New Game" screen — screens aren't built yet; would
   block worldgen on the screen state machine. Generation is REPL/lifecycle
   driven for now.
@@ -52,7 +58,40 @@ Generation must be **deterministic**: same seed → byte-identical map.
 
 ## Architecture
 
-A new pure pipeline namespace, `sim.worldgen`, exposes:
+The system is split into **two layers** with a strict one-way dependency:
+
+```
+  sim.worldgen   (game layer: classification, pipeline, entity scatter)
+        │  depends on
+        ▼
+  gridnoise.*    (generic core: grid algorithms, noise, image — NO game imports)
+```
+
+### Two layers: generic core vs. game
+
+A new top-level package, **`gridnoise.*`**, holds everything that knows nothing
+about colonies — pure math and data over a generic grid. It lives at
+`src/gridnoise/` (a different package than the game's `src/sim/`), on the same
+classpath, so no `deps.edn` change is needed. The package name itself makes the
+boundary visible: anything under `gridnoise.*` that imports `sim.*` is a bug.
+
+**The dependency rule (the entire reusability win):** `sim.worldgen` →
+`gridnoise.*`, **never** the reverse. The core has zero game imports, so it is
+reusable as-is and extractable later (to a `:local/root` sub-module, then a
+git-dep, then Clojars) by moving the directory and adding a deps entry — *if*
+this rule holds from day one. We do **not** make a separate repo now (YAGNI: no
+second consumer exists yet; packaging adds versioning/cross-repo friction but
+zero additional decoupling).
+
+A grid in the core is generic over its cell type:
+`{:width :height :cells [...]}` — cells are doubles for a noise field, booleans
+for a CA mask, or (in the game) terrain keywords. The game's existing `:tiles`
+vector is already this shape, so `sim.worldgen` builds `gridnoise` grids
+internally and emits a plain `:tiles` vector at the end. (`sim.tile` stays as
+is — no refactor of working pathfinding/render code. Having `sim.tile` sit on
+`gridnoise.grid` is a possible *future* cleanup, explicitly out of scope here.)
+
+The game layer's `sim.worldgen` exposes:
 
 ```clojure
 (generate world opts) ; => world'  — rebuilds :grid, adds tree/item entities
@@ -106,22 +145,34 @@ render layers as a walked list. The pipeline *is* the extension point.
 
 ### New / edited files
 
+**Generic core — `gridnoise.*` (no game imports):**
+
 | File | Change | Purpose |
 |---|---|---|
-| `src/sim/worldgen/noise.clj` | new | Composable noise primitives (lattice value, `smoothstep`, octave/fbm combinator); pure, headless-testable |
-| `src/sim/worldgen.clj` | new | Pipeline + the four passes |
+| `src/gridnoise/grid.clj` | new | Generic grid `{:width :height :cells}`: `idx`, `in-bounds?`, neighbors, `flood-fill`, `ca-step`, `map-cells` |
+| `src/gridnoise/noise.clj` | new | Composable noise primitives: seeded lattice value, `smoothstep`, octave/fbm combinator |
+| `src/gridnoise/image.clj` | new | Render a grid/field to a grayscale `BufferedImage` / PNG via `javax.imageio.ImageIO` — standalone "see the noise" tooling |
+| `test/gridnoise/grid_test.clj` | new | Index math, neighbors, flood-fill, ca-step |
+| `test/gridnoise/noise_test.clj` | new | Noise determinism, value range, smoothness |
+
+**Game layer — `sim.*` (depends on `gridnoise`, never the reverse):**
+
+| File | Change | Purpose |
+|---|---|---|
+| `src/sim/worldgen.clj` | new | Pipeline + four passes; terrain classification; consumes `gridnoise` |
 | `src/sim/entity.clj` | edit | `make-tree`, `:tree` kind, `trees` query |
 | `src/sim/render/sprites.clj` | edit | `tree-region` (tiles cell `26.c`) |
 | `src/sim/render/layers/flora.clj` | new | Draw tree entities (z: terrain < flora < items < pawns) |
 | `src/sim/render/gdx.clj` | edit | Insert flora layer into the compositor |
 | `src/sim/world.clj` | edit | `reset-world!` gains `:generate?` + seed opts |
 | `dev/user.clj` | edit | `(generate-world! opts)` REPL helper |
-| `test/sim/worldgen_test.clj` | new | Determinism, connectivity, band proportions |
-| `test/sim/worldgen/noise_test.clj` | new | Noise determinism + value range |
+| `test/sim/worldgen_test.clj` | new | Classification, determinism, connectivity, placement |
 
 The flora render layer stays untested, matching the existing
 terrain/items/pawns convention (GL `draw` calls are not unit-tested). All pure
-logic is tested headless.
+logic — in both layers — is tested headless. The `gridnoise` core is tested in
+isolation (its tests import no `sim.*`), which is the proof that the boundary
+holds.
 
 ## Data-model additions
 
@@ -160,12 +211,13 @@ Sample an **elevation** noise field per tile and threshold:
 Thresholds are the tuning knobs (e.g. `water-level ≈ 0.30`, `rock-level ≈ 0.78`
 — tune during implementation). Produces contiguous bands rather than confetti.
 
-The noise field is itself composed from small primitives in `noise.clj`: a
-seeded lattice-value lookup, `smoothstep` interpolation, and an octave/fbm
-combinator that sums scaled samples. The pass is a thin
-`elevation`/`moisture` → terrain classifier over those primitives, so the noise
-character (frequency, octaves) is tunable without touching the classifier and
-the same primitives back any future noise needs.
+The noise field comes from the generic `gridnoise.noise` primitives: a seeded
+lattice-value lookup, `smoothstep` interpolation, and an octave/fbm combinator
+that sums scaled samples. The pass is a thin `elevation`/`moisture` → terrain
+classifier *in the game layer* over those game-agnostic primitives — so the
+noise character (frequency, octaves) is tunable without touching the
+classifier, and the same primitives back any other consumer (or a noise-image
+dump for debugging).
 
 Builds the `:tiles` vector wholesale via `(vec (for [i (range (* w h))] …))` —
 **not** repeated `set-tile` calls (`set-tile` is for incremental edits later,
@@ -175,13 +227,17 @@ e.g. mining one tile).
 
 Adds organic stone masses on top of the noise base:
 
-1. Random-fill a boolean rock mask at ~42% density.
-2. Run 4 smoothing iterations: a cell becomes rock if ≥5 of its 8 neighbors are
-   rock (border-out-of-bounds counts as rock so masses hug edges).
+1. Random-fill a boolean rock mask (a `gridnoise` grid of booleans) at ~42%
+   density.
+2. Run 4 iterations of `gridnoise.grid/ca-step`: a cell becomes rock if ≥5 of
+   its 8 neighbors are rock (border-out-of-bounds counts as rock so masses hug
+   edges).
 3. OR the resulting mask onto the base grid as `:stone`.
 
 Gives cave/ridge-like contiguous formations that the noise threshold alone
-produces more diffusely. Each iteration is a pure `mask → mask`.
+produces more diffusely. `ca-step` is a generic `grid → grid` in the core
+(parameterized by the survival predicate); only the OR-onto-terrain step is
+game-specific.
 
 ### Pass 3 — Connectivity guard — *Plan 2*
 
@@ -189,15 +245,18 @@ Guarantees everything generated is reachable, **without mutating terrain**:
 
 1. Carve a small guaranteed-open spawn clearing near map center (force those
    tiles to `:grass`).
-2. Flood-fill the reachable passable set from the clearing (4-connected over
-   passable terrain).
-3. Expose the reachable set to the scatter pass; **scatter places only on
-   reachable tiles.**
+2. Flood-fill the reachable set from the clearing via `gridnoise.grid/flood-fill`
+   (generic 4-connected fill, parameterized by a passability predicate the game
+   supplies).
+3. Write the reachable set into `state`; **scatter places only on reachable
+   tiles.**
 
 Refusing to place unreachable loot is simpler and safer than carving corridors
 through rock (which would fight the generator and could still strand things).
-The flood-fill is the reachability primitive `CLAUDE.md` flags for the future
-region graph — built early, reused later.
+`flood-fill` lives in the core (it is pure grid traversal); the passability
+predicate — "is this terrain keyword passable?" — is the only game-specific
+part, passed in. This is the reachability primitive `CLAUDE.md` flags for the
+future region graph: built generic, reused later.
 
 ### Pass 4 — Scatter
 
@@ -234,26 +293,47 @@ shifts the others.
 ## Public API & REPL surface
 
 ```clojure
-;; Pure core:
-(worldgen/generate world {:seed 42})        ; => world'
+;; Generic core (game-agnostic — usable from any project / the REPL):
+(noise/field {:seed 7 :freq 0.08 :octaves 4})  ; => fn [x y] -> double in [0,1]
+(grid/flood-fill g start passable?)             ; => set of reachable coords
+(grid/ca-step mask survive?)                    ; => smoothed boolean grid
+(image/spit-png! "noise.png" g)                 ; => write a grayscale PNG to eyeball
+
+;; Game pipeline (consumes the core):
+(worldgen/generate world {:seed 42})            ; => world'  (pure)
+(worldgen/generate world {:seed 42 :passes [...]}) ; custom/partial pipeline
 
 ;; Lifecycle:
-(reset-world! {:generate? true :seed 42})   ; fresh generated world
+(reset-world! {:generate? true :seed 42})       ; fresh generated world
 ;; initial-world stays empty-grass; :generate? routes through worldgen/generate
 
 ;; REPL helper (dev/user.clj):
-(generate-world! {:seed 42})                 ; reset + generate, print status
+(generate-world! {:seed 42})                     ; reset + generate, print status
 ;; then (spawn-pawn! …) (go!)
 ```
 
 `opts` keys: `:seed`, optional `:width`/`:height` (default to current 40×20),
-and tuning thresholds with sensible defaults. `initial-world` remains
-empty-grass so unit tests and the REPL keep a blank slate.
+optional `:passes` (override the pipeline), and tuning thresholds with sensible
+defaults. `initial-world` remains empty-grass so unit tests and the REPL keep a
+blank slate. The `image/spit-png!` helper is the concrete payoff of the
+"noise images for different purposes" idea — a standalone way to see a field
+without booting libGDX.
 
 ## Testing strategy (headless, no GL)
 
-- **noise**: same `(x,y,seed)` → identical value; output in expected range;
-  field is smooth (adjacent samples close).
+**Generic core (`gridnoise.*`, tested in isolation — no `sim.*` imports):**
+
+- **noise**: same `(x,y,seed)` → identical value; output in `[0,1]`; field is
+  smooth (adjacent samples close).
+- **grid**: `idx`/`in-bounds?`/neighbors correctness; `flood-fill` reaches
+  exactly the connected region under a given predicate; `ca-step` applies the
+  survival rule and handles borders.
+
+The fact that these tests import no game code is the executable proof that the
+boundary holds (rule from the architecture section).
+
+**Game layer (`sim.worldgen`):**
+
 - **determinism**: `(generate w {:seed s})` twice → identical `:grid` and
   identical entity set.
 - **band proportions**: with fixed seed, terrain-type counts fall within
@@ -265,19 +345,26 @@ empty-grass so unit tests and the REPL keep a blank slate.
 
 Render layer (`flora`) is not unit-tested (GL draw), consistent with existing
 layers; `flora`'s geometry is trivial (one sprite per tree entity at its pos).
+`image/spit-png!` is exercised by an optional smoke test (write to a temp file,
+assert non-empty) but not pixel-asserted.
 
 ## Staging
 
-**Plan 1 — playable baseline**
-`noise.clj` + Pass 1 (base) + Pass 4 (scatter) + tree entity + flora layer +
-sprites + API/REPL helper + tests for noise/determinism/placement. End to end:
-generate → varied ground/water + trees + haulable loot; pawns haul it with the
-existing job. No rock, no connectivity guard (map trivially connected).
+**Plan 1 — generic core + playable baseline**
+Build `gridnoise.grid` (index/neighbors + `map-cells`) and `gridnoise.noise`
+(value noise + fbm) and `gridnoise.image` (PNG dump) first, tested in isolation.
+Then the game layer: Pass 1 (base) + Pass 4 (scatter) + tree entity + flora
+layer + sprites + API/REPL helper. End to end: generate → varied ground/water +
+trees + haulable loot; pawns haul it with the existing job. No rock, no
+connectivity guard (map trivially connected). `gridnoise.grid`'s `flood-fill`
+and `ca-step` may land in Plan 1 (cheap, generic, unit-tested) even though no
+game pass uses them yet, or defer to Plan 2 — implementer's call.
 
 **Plan 2 — formations + reachability**
-Pass 2 (CA rock) + Pass 3 (connectivity guard) layered in as two new pure
-passes, scatter constrained to the reachable set, plus connectivity/band tests.
-Zero changes to Plan 1's passes — the pipeline is the extension point.
+Pass 2 (CA rock, via `gridnoise.grid/ca-step`) + Pass 3 (connectivity guard,
+via `gridnoise.grid/flood-fill`) layered in as two new pure passes, scatter
+constrained to the reachable set, plus connectivity/band tests. Zero changes to
+Plan 1's passes — the pipeline is the extension point.
 
 ## Open questions / deferred
 
