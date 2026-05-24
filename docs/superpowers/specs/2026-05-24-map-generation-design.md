@@ -179,7 +179,7 @@ holds.
 ### Tree entity
 
 ```clojure
-{:id (next-id!) :kind :tree :pos [x y] :species :tree}
+{:id (next-id!) :kind :tree :pos [x y]}
 ```
 
 - **Passable.** A* reads only terrain, so trees never touch pathfinding —
@@ -187,6 +187,9 @@ holds.
   contract terrain-only.
 - `sim.entity` gains `make-tree`, a `trees` query (filter `:kind :tree`), and
   the `:tree` kind is purely additive (no changes to existing queries).
+- No `:species` field yet — it would duplicate `:kind` today. When tree species
+  matter, `make-tree` gains a species arg holding a concrete value (`:oak`,
+  `:pine`), not a repeat of the kind.
 
 ### Terrain
 

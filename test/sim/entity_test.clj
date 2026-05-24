@@ -4,11 +4,10 @@
    [sim.entity :as entity]))
 
 (deftest make-tree-shape
-  (testing "a tree is a :tree-kind entity at a position"
+  (testing "a tree is a :tree kind entity at a position"
     (let [t (entity/make-tree [4 5])]
       (is (= :tree (:kind t)))
       (is (= [4 5] (:pos t)))
-      (is (= :tree (:species t)))
       (is (some? (:id t))))))
 
 (deftest trees-query-filters-by-kind

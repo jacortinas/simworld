@@ -52,18 +52,17 @@
    :carried-by nil})
 
 ;; ---------------------------------------------------------------------------
-;; Trees -- passable flora. A* reads only terrain, so trees never affect
+;; Trees — passable flora. A* reads only terrain, so trees never affect
 ;; pathfinding (RimWorld's model: walk through, chop later). Inert until a
 ;; future chop job; rendered now.
 ;; ---------------------------------------------------------------------------
 
 (defn make-tree
-  "Construct a tree entity at [x y]. Pure -- does NOT insert into the world."
+  "Construct a tree entity at [x y]. Pure — does NOT insert into the world."
   [[x y]]
-  {:id      (next-id!)
-   :kind    :tree
-   :pos     [x y]
-   :species :tree})
+  {:id   (next-id!)
+   :kind :tree
+   :pos  [x y]})
 
 ;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
