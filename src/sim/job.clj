@@ -4,7 +4,7 @@
    A job is a piece of data describing what a pawn is currently doing.
    Lifecycle: :pending -> :in-progress -> (:complete | :failed).
    The pawn carries its current job in (:job pawn); when done, the slot
-   is cleared back to nil by `sim.ai/decide`.
+   is cleared back to nil by `sim.ai/advance-job`.
 
    `advance` is the per-tick step function. It now returns a world (not a
    pawn) so jobs can touch multiple entities — pickup/drop both mutate the

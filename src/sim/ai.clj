@@ -1,9 +1,9 @@
 (ns sim.ai
-  "Pawn decision-making.
-
-   `decide` is the per-pawn AI step. Pure: (world, pawn) -> world. The
-   return type is a *world* (not a pawn) because some jobs mutate multiple
-   entities — see sim.job/advance."
+  "Pawn decision-making, split into the two cadences the scheduler drives:
+   `advance-job` (job execution, runs every tick) and `redeliberate` (idle
+   choice, which the caller sub-throttles to the rare band). Both are pure
+   (world, pawn) -> world; the return is a *world* (not a pawn) because some
+   jobs mutate multiple entities — see sim.job/advance."
   (:require
    [sim.entity :as entity]
    [sim.job    :as job]
@@ -32,8 +32,10 @@
       (assoc pawn :pos (rand-nth choices))
       pawn)))
 
-(defn decide
-  "Choose what this pawn should do this tick. (world, pawn) -> world."
+(defn advance-job
+  "Job-execution step for one pawn — runs every tick. Clears a finished job;
+   otherwise advances it (the physical step is gated by the pawn's move
+   cadence). Pure: (world, pawn) -> world."
   [world pawn]
   (cond
     ;; Clean up a finished job — pawn is idle starting this tick.
@@ -48,8 +50,12 @@
         (job/advance world pawn)
         world))
 
-    ;; No job: idle behavior.
-    (moves-this-tick? world pawn)
-    (entity/update-entity world (:id pawn) #(random-step world %))
-
     :else world))
+
+(defn redeliberate
+  "Idle-pawn behavior (currently random wander). The CALLER sub-throttles this
+   to the rare band; this fn just acts. Pure: (world, pawn) -> world."
+  [world pawn]
+  (if (:job pawn)
+    world
+    (entity/update-entity world (:id pawn) #(random-step world %))))

@@ -30,11 +30,12 @@
   (let [w0 (-> (world/initial-world {})
                (entity/add-entity (entity/make-pawn "tester" [0 0])))
         pawn-before (first (entity/pawns w0))
-        w-after     (nth (iterate simulation/tick w0) 100)
+        ;; 250 ticks > 2x rare interval (125) -> >= 1 decay fire for any pawn id
+        w-after     (nth (iterate simulation/tick w0) 250)
         pawn-after  (first (entity/pawns w-after))]
     (is (< (get-in pawn-after [:needs :food])
            (get-in pawn-before [:needs :food]))
-        "food need should have decayed over 100 ticks")))
+        "food need should have decayed after 250 ticks (rare cadence)")))
 
 (deftest pathfinding-trivial-cases
   (let [w (world/initial-world {:width 10 :height 10})]
