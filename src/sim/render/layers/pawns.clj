@@ -1,10 +1,9 @@
 (ns sim.render.layers.pawns
   "Pawns layer: each pawn drawn as a 32px sprite at its tile.
 
-   The selected pawn is tinted to signal selection — a stopgap until a proper
-   world-space selection box (now feasible with the 1px texture in sim.ui.hud)
-   lands. Resets the batch tint to white when done so later draws aren't
-   tinted."
+   Selection feedback is now the world-space box (sim.render.layers.selection),
+   uniform across all selectable kinds — so pawns always draw untinted. Resets
+   the batch tint to white when done so later draws aren't affected."
   (:require
    [sim.entity :as entity]
    [sim.render.sprites :as sprites])
@@ -14,11 +13,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private selected-tint (Color. 1.0 1.0 0.5 1.0))
-
 (defn draw
   "Render pawns in WORLD coordinates. Same Y-flip convention as terrain."
-  [world ^SpriteBatch batch tile-size selected-id]
+  [world ^SpriteBatch batch tile-size]
   (let [height (long (:height (:grid world)))
         ts     (long tile-size)
         ^TextureRegion region (sprites/pawn-region)]
@@ -27,6 +24,6 @@
         (let [px (* (long x) ts)
               ;; bottom-left anchor; (height-1-y) matches screen->tile (see terrain)
               py (* (- height (long y) 1) ts)]
-          (.setColor batch (if (= selected-id (:id pawn)) selected-tint Color/WHITE))
+          (.setColor batch Color/WHITE)
           (.draw batch region (float px) (float py) (float ts) (float ts)))))
     (.setColor batch Color/WHITE)))
