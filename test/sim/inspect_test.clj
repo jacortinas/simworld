@@ -1,0 +1,69 @@
+(ns sim.inspect-test
+  "Pure inspect logic — no GL. Builds tiny worlds from sim.tile/sim.entity
+   and asserts the concept-line strings and selectable filtering."
+  (:require
+   [clojure.test :refer [deftest is testing]]
+   [sim.tile    :as tile]
+   [sim.inspect :as inspect]))
+
+;; A 5x5 grass grid with a few terrain pokes; entities added per-test.
+(defn- world-with
+  "Build a world whose :grid is 5x5 grass with `terrain-pokes` ([x y key] ...)
+   applied, and whose :entities is the given seq keyed by :id."
+  [terrain-pokes entities]
+  (let [grid (reduce (fn [g [x y k]] (tile/set-tile g x y k))
+                     (tile/make-grid 5 5 :grass)
+                     terrain-pokes)]
+    {:grid grid
+     :entities (into {} (map (juxt :id identity)) entities)}))
+
+(deftest off-map-is-nil
+  (testing "describe-tile returns nil outside the grid"
+    (let [w (world-with [] [])]
+      (is (nil? (inspect/describe-tile w [-1 0])))
+      (is (nil? (inspect/describe-tile w [0 -1])))
+      (is (nil? (inspect/describe-tile w [5 0])))
+      (is (nil? (inspect/describe-tile w [0 5]))))))
+
+(deftest bare-grass-tile
+  (testing "a passable grass tile is one line, speed as a percentage"
+    (is (= ["Grass 100%"] (inspect/describe-tile (world-with [] []) [2 2])))))
+
+(deftest impassable-tile-omits-percent
+  (testing "impassable terrain shows (impassable), no speed %"
+    (let [w (world-with [[1 1 :stone]] [])]
+      (is (= ["Stone (impassable)"] (inspect/describe-tile w [1 1]))))))
+
+(deftest move-speed-percentages
+  (testing "speed % = round(100 / move-cost) for passable terrain"
+    (let [w (world-with [[0 0 :dirt] [1 0 :gravel] [2 0 :water]] [])]
+      (is (= ["Dirt 87%"]   (inspect/describe-tile w [0 0])))
+      (is (= ["Gravel 77%"] (inspect/describe-tile w [1 0])))
+      (is (= ["Water 40%"]  (inspect/describe-tile w [2 0]))))))
+
+(deftest entity-lines-sorted-by-id
+  (testing "terrain line first, then one label per selectable entity, by :id"
+    (let [tree {:id 7 :kind :tree :pos [3 3]}
+          pawn {:id 9 :kind :pawn :name "Dave" :pos [3 3]}
+          item {:id 4 :kind :item :material :wood :pos [3 3]}
+          w    (world-with [] [tree pawn item])]
+      (is (= ["Grass 100%" "Wood" "Tree" "Dave"]
+             (inspect/describe-tile w [3 3]))))))
+
+(deftest selectable-at-filters-and-sorts
+  (testing "only selectable kinds, at the tile, sorted by id; carried items excluded"
+    (let [tree    {:id 2 :kind :tree :pos [1 1]}
+          pawn    {:id 1 :kind :pawn :name "A" :pos [1 1]}
+          carried {:id 3 :kind :item :material :wood :pos nil :carried-by 1}
+          elsewhere {:id 4 :kind :tree :pos [2 2]}
+          w (world-with [] [tree pawn carried elsewhere])]
+      (is (= [1 2] (map :id (inspect/selectable-at w [1 1]))))
+      (is (= []    (inspect/selectable-at w [0 0])) "bare tile -> empty"))))
+
+(deftest long-labels-truncate-with-ellipsis
+  (testing "a label past max-line-len is cut to exactly max-line-len ending in ..."
+    (let [pawn {:id 1 :kind :pawn :name (apply str (repeat 50 \X)) :pos [0 0]}
+          w    (world-with [] [pawn])
+          line (second (inspect/describe-tile w [0 0]))]
+      (is (= inspect/max-line-len (count line)))
+      (is (clojure.string/ends-with? line "...")))))
