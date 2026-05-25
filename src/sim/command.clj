@@ -10,6 +10,7 @@
    [sim.world    :as world]
    [sim.ui-state :as ui]
    [sim.entity   :as entity]
+   [sim.inspect  :as inspect]
    [sim.job      :as job]
    [sim.tile     :as tile]))
 
@@ -27,10 +28,19 @@
        first))
 
 (defn left-click!
-  "RimWorld left-click: select the pawn under the cursor. Clicking empty
-   ground (no pawn) clears the selection — `select!` with nil does that."
+  "RimWorld left-click: cycle the selection through the selectable entities on
+   the clicked tile. Repeated clicks on one tile advance and wrap; a tile whose
+   current selection isn't present starts at its first entity; an empty tile
+   clears. Entities are sorted by :id (inspect/selectable-at) for a stable
+   cycle order."
   [tx ty]
-  (ui/select! (:id (pawn-at @world/world tx ty)))
+  (let [ids (mapv :id (inspect/selectable-at @world/world [tx ty]))
+        idx (.indexOf ^java.util.List ids (ui/selected)) ; -1 when absent / nil
+        nxt (cond
+              (empty? ids) nil
+              (neg? idx)   (first ids)                   ; new tile or nothing selected yet
+              :else        (nth ids (mod (inc idx) (count ids))))]
+    (ui/select! nxt))
   nil)
 
 (defn right-click!
