@@ -11,6 +11,7 @@
    code may not handle them. Migration logic is a TODO for when we have a
    shape worth migrating."
   (:require
+   [sim.schedule   :as schedule]
    [taoensso.nippy :as nippy]))
 
 (set! *warn-on-reflection* true)
@@ -25,16 +26,19 @@
   (str *save-dir* "/" slot ".npy"))
 
 (defn save!
-  "Freeze the world to saves/<slot>.npy. Default slot is 'autosave'."
+  "Freeze the world to saves/<slot>.npy. Default slot is 'autosave'.
+   The :schedule bucket index is DERIVED state — stripped before freezing
+   (smaller saves, no drift) and rebuilt on load via schedule/reindex."
   ([world] (save! world "autosave"))
   ([world slot]
    (ensure-dir!)
-   (nippy/freeze-to-file (path slot) world)
+   (nippy/freeze-to-file (path slot) (dissoc world :schedule))
    slot))
 
 (defn load!
-  "Thaw saves/<slot>.npy. Returns the world value (does NOT touch the atom).
-   Throws if the file is missing or corrupt."
+  "Thaw saves/<slot>.npy and rebuild the derived schedule index. Returns the
+   world value (does NOT touch the atom). Handles both new (stripped) saves and
+   older saves lacking :schedule. Throws if the file is missing or corrupt."
   ([] (load! "autosave"))
   ([slot]
-   (nippy/thaw-from-file (path slot))))
+   (schedule/reindex (nippy/thaw-from-file (path slot)))))

@@ -102,3 +102,13 @@
     (is (= [:a :b] (mapv first v)) "names in order; :a kept its slot")
     (is (= [:a2 :b] (:log (reduce (fn [w [_ f]] (f w nil)) {} v)))
         "the replacement fn (a2) is used; order preserved")))
+
+(deftest reindex-equals-incremental-after-strip
+  (testing "stripping :schedule then reindex reproduces the incremental index"
+    (let [incremental (-> {:entities {} :schedule (schedule/empty-index)}
+                          (as-> w (reduce (fn [w e] (assoc-in w [:entities (:id e)] e))
+                                          w [(item 130) (rare 7) (never 9)]))
+                          (as-> w (reduce schedule/register w (vals (:entities w)))))
+          stripped    (dissoc incremental :schedule)
+          rebuilt     (schedule/reindex stripped)]
+      (is (= (:schedule incremental) (:schedule rebuilt))))))
