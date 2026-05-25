@@ -25,6 +25,7 @@
   ;; so those are just an initial placeholder.
   (atom {:camera   {:x 400.0 :y 200.0 :zoom 0.8}
          :selected nil
+         :hover    nil
          :debug?   false}))
 
 (defn camera [] (:camera @ui-state))
@@ -38,6 +39,17 @@
   "Set the selection to `id` (or nil to clear)."
   [id]
   (swap! ui-state assoc :selected id))
+
+(defn hover
+  "Tile [tx ty] currently under the cursor, or nil. May be off-map: callers
+   (sim.inspect/describe-tile) bounds-check. View state — never serialized."
+  []
+  (:hover @ui-state))
+
+(defn set-hover!
+  "Store the hovered tile [tx ty] (or nil). Called from sim.input/mouseMoved."
+  [pos]
+  (swap! ui-state assoc :hover pos))
 
 (defn debug?
   "Is the debug overlay currently shown? Falsey by default — and because the

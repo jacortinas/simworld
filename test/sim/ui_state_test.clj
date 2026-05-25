@@ -23,3 +23,11 @@
     (is (true?  (ui/debug?))        "reads back true")
     (is (false? (ui/toggle-debug!)) "true -> false, returns false")
     (is (false? (ui/debug?))        "reads back false")))
+
+(deftest hover-round-trips
+  (testing "set-hover! stores a [tx ty]; hover reads it; nil clears"
+    (is (nil? (ui/hover)) "absent key reads nil")
+    (ui/set-hover! [3 7])
+    (is (= [3 7] (ui/hover)))
+    (ui/set-hover! nil)
+    (is (nil? (ui/hover)))))
