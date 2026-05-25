@@ -26,6 +26,7 @@
    [sim.input :as input]
    [sim.clock :as clock]
    [sim.ui.hud :as hud]
+   [sim.ui.inspect-panel :as inspect-panel]
    [sim.render.sprites :as sprites]
    [sim.render.layers.terrain :as terrain]
    [sim.render.layers.flora   :as flora-layer]
@@ -145,6 +146,7 @@
           (.setProjectionMatrix b (.combined uc))
           (.begin b)
           (hud/draw b f px w)
+          (inspect-panel/draw b f px w)
           (.end b)))
 
       (resize [w h]
