@@ -36,3 +36,47 @@
    normal-band systems to do periodic work on staggered ticks."
   [^long clock ^long interval ^long id]
   (= (home-bucket id interval) (due-bucket clock interval)))
+
+;; ---------------------------------------------------------------------------
+;; Bucket index. :normal is every-tick and unbucketed; only :rare/:long get a
+;; physical index, since that's where avoiding the full-set scan pays off.
+;; ---------------------------------------------------------------------------
+
+(def ^:private bucketed-bands [:rare :long])
+
+(defn empty-index
+  "Fresh :schedule value: a vector of `interval` empty id-sets per bucketed band."
+  []
+  (reduce (fn [m band]
+            (assoc m band (vec (repeat (long (bands band)) #{}))))
+          {}
+          bucketed-bands))
+
+(defn register
+  "Add an entity to its ticker-type bucket. No-op for :never (or any
+   ticker-type not in the index, or a world without :schedule)."
+  [world entity]
+  (let [tt       (:ticker-type entity)
+        interval (bands tt)]
+    (if (and interval (get-in world [:schedule tt]))
+      (update-in world [:schedule tt (home-bucket (:id entity) interval)]
+                 (fnil conj #{}) (:id entity))
+      world)))
+
+(defn unregister
+  "Remove an entity from its ticker-type bucket. No-op for :never."
+  [world entity]
+  (let [tt       (:ticker-type entity)
+        interval (bands tt)]
+    (if (and interval (get-in world [:schedule tt]))
+      (update-in world [:schedule tt (home-bucket (:id entity) interval)]
+                 (fnil disj #{}) (:id entity))
+      world)))
+
+(defn reindex
+  "Rebuild :schedule from scratch from (:entities world). Idempotent. Used on
+   load and as a repair when the index might be stale or absent."
+  [world]
+  (reduce register
+          (assoc world :schedule (empty-index))
+          (vals (:entities world))))
