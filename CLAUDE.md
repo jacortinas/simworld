@@ -14,6 +14,15 @@ namespaces (the directory rename happened early — never use `colony.*`).
     at a fixed 30 Hz. Pausable.
 - **Simulation / tick** — one fixed-timestep world update,
   `sim.simulation/tick` (pure `world → world'`). The sim clock drives it.
+  `tick` = `advance-clock → schedule/run` (see tick bands below).
+- **Tick bands & staggering** — `sim.schedule` tiers updates into `:normal`
+  (every tick), `:rare` (125 ticks ~4.2s), `:long` (1000 ticks ~33s), keyed by
+  each entity's `:ticker-type`. Rare/long use a physical bucket index in
+  `(:schedule world)` so only ~1/interval of a band runs per tick (true
+  O(active)). Pawns are `:ticker-type :never` — ticked every tick by normal
+  systems; their needs/idle work self-throttle via `schedule/due?`. The index
+  is DERIVED — not persisted; `schedule/reindex` rebuilds it on load. (RimWorld's
+  TickManager model — see `docs/rimworld-engine-internals.md` §1.1.)
 - **sim-time vs real-time** — pause freezes *sim-time* (pawns/jobs/needs);
   *real-time* (render, input, future animations/menus) keeps running. Anything
   that must animate while paused (sprite frames, camera tweens, menus) lives on
@@ -87,6 +96,14 @@ namespaces (the directory rename happened early — never use `colony.*`).
   hinges on this.
 - **Pure tick function.** `(sim.simulation/tick world) → world'`. The
   sim clock atomically swaps with this. No mutable state inside sim code.
+- **Scheduler, not a uniform tick.** `tick` = `advance-clock → schedule/run`.
+  Per-tick work is registered band systems (`schedule/register-system!`), not a
+  hand-written pipeline. New periodic work = a system on a band; new bucketed
+  entity kinds = a `:ticker-type`. `entity/add-entity`/`remove-entity` are the
+  index chokepoint (they call `schedule/register`/`unregister`) — keep ALL
+  entity lifecycle flowing through them so the bucket index can't drift. The
+  registry is a `defonce` atom; `register-system!` replaces by name, so reloads
+  re-register idempotently.
 - **Job-as-data with multimethod dispatch.** `(defmulti job/advance ...)`,
   dispatch on `(:type job)`. New job types are pure `defmethod` adds —
   zero touches elsewhere.
@@ -259,13 +276,16 @@ old compiled loop body until `start!` respawns it.
 
 ## Files to know
 
-- `src/sim/world.clj` — the atom + initial-state shape
-- `src/sim/simulation.clj` — the pure tick function
+- `src/sim/world.clj` — the atom + initial-state shape (incl. `:schedule`)
+- `src/sim/simulation.clj` — the pure tick function + band-system defs/registration
+- `src/sim/schedule.clj` — tick-band scheduler: bucket math, the derived bucket
+  index, the band→systems registry, `run`/`run*`, `reindex`
 - `src/sim/clock.clj` — the simulation clock (fixed-timestep tick driver);
   `start!`/`stop!` (liveness), `pause!`/`resume!`/`toggle-pause!` (sim-time)
 - `src/sim/job.clj` — defmulti `advance`, haul phases, `walk-toward`, `assign`
   (+ `prime-path`: eager go-to pathing at assign time)
-- `src/sim/ai.clj` — `decide` (the per-pawn AI step)
+- `src/sim/ai.clj` — `advance-job` (job execution, every tick) + `redeliberate`
+  (idle choice, rare-throttled by the caller)
 - `src/sim/log.clj` — debug log helpers (append/recent/of-type/for-pawn)
 - `src/sim/inspect.clj` — PURE tile inspection: `describe-tile` (concept-line
   strings), `selectable-at` (entities on a tile, sorted by id). Headless-tested.
