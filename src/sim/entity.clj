@@ -5,7 +5,13 @@
    This is the 'maps of components' strategy from the architecture notes —
    readable, REPL-friendly, fine up to a few hundred entities. When we later
    need 10k+ entities we'll move to column-store, but the public API in this
-   namespace is what callers depend on, so it stays stable.")
+   namespace is what callers depend on, so it stays stable.
+
+   `:ticker-type` (:never/:rare/:long) places an entity in the scheduler's
+   rare/long bucket index. add-entity/remove-entity are the lifecycle
+   chokepoint that keeps that index in sync — see sim.schedule."
+  (:require
+   [sim.schedule :as schedule]))
 
 (set! *warn-on-reflection* true)
 
@@ -17,16 +23,18 @@
   "Construct a new pawn at the given [x y]. Pure — does NOT insert into the world.
    Use `sim.world/spawn-pawn` for that."
   [name [x y]]
-  {:id       (next-id!)
-   :kind     :pawn
-   :name     name
-   :pos      [x y]
-   :needs    {:food 1.0 :rest 1.0 :recreation 1.0}
-   :traits   #{}
-   :skills   {}
-   :job      nil
-   :carrying nil
-   :path     nil})
+  {:id          (next-id!)
+   :kind        :pawn
+   :ticker-type :never  ; ticked every tick by normal systems; needs/idle work
+                        ; self-throttles via schedule/due?, so not bucketed
+   :name        name
+   :pos         [x y]
+   :needs       {:food 1.0 :rest 1.0 :recreation 1.0}
+   :traits      #{}
+   :skills      {}
+   :job         nil
+   :carrying    nil
+   :path        nil})
 
 ;; ---------------------------------------------------------------------------
 ;; Items
@@ -45,11 +53,12 @@
 (defn make-item
   "Construct an item of the given material at [x y]."
   [material [x y]]
-  {:id         (next-id!)
-   :kind       :item
-   :material   material
-   :pos        [x y]
-   :carried-by nil})
+  {:id          (next-id!)
+   :kind        :item
+   :ticker-type :long  ; deterioration is long-band (stub for now)
+   :material    material
+   :pos         [x y]
+   :carried-by  nil})
 
 ;; ---------------------------------------------------------------------------
 ;; Trees — passable flora. A* reads only terrain, so trees never affect
@@ -60,9 +69,10 @@
 (defn make-tree
   "Construct a tree entity at [x y]. Pure — does NOT insert into the world."
   [[x y]]
-  {:id   (next-id!)
-   :kind :tree
-   :pos  [x y]})
+  {:id          (next-id!)
+   :kind        :tree
+   :ticker-type :never  ; inert until a growth/chop system exists
+   :pos         [x y]})
 
 ;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
@@ -114,12 +124,21 @@
 ;; ---------------------------------------------------------------------------
 
 (defn add-entity
+  "Insert an entity and register it in the schedule index (the lifecycle
+   chokepoint). On a world without :schedule, register is a no-op."
   [world entity]
-  (assoc-in world [:entities (:id entity)] entity))
+  (-> world
+      (assoc-in [:entities (:id entity)] entity)
+      (schedule/register entity)))
 
 (defn remove-entity
+  "Remove an entity and unregister it from the schedule index."
   [world id]
-  (update world :entities dissoc id))
+  (if-let [e (get-in world [:entities id])]
+    (-> world
+        (update :entities dissoc id)
+        (schedule/unregister e))
+    world))
 
 (defn update-entity
   "Apply f to the entity with the given id; (f entity & args) -> new-entity."
