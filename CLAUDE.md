@@ -53,13 +53,26 @@ namespaces (the directory rename happened early — never use `colony.*`).
   :path-index)` — it NEVER trims the stored `:path`. Geometry (`path->segments`,
   `remaining-path`) is pure + unit-tested headless (`sim.debug-layer-test`); the
   `draw` GL calls stay untested like the other layers.
+- **Tile inspect + entity selection.** A pure, headless-tested `sim.inspect`
+  core (`describe-tile`, `selectable-at`) backs two dumb GL views: a bottom-
+  right hover panel (`sim.ui.inspect-panel`, UI cam) showing the hovered tile
+  as concept lines (terrain `Grass 100%` / `Stone (impassable)`, then one line
+  per selectable entity), and a world-space selection box
+  (`sim.render.layers.selection`, drawn between pawns and the debug overlay).
+  Left-click cycles `:selected` through a tile's selectable entities (any kind,
+  not just pawns); selection is the substrate future right-click action menus
+  will read. Same pure-core / untested-`draw` split as the debug layer.
 - **Input — RimWorld grammar.** `sim.input` proxies an InputAdapter:
-  left-click selects a pawn, right-click issues a forced `:go-to`,
+  left-click cycles selection through a tile's selectable entities
+  (pawns/items/trees, by id; empty tile clears), right-click issues a forced
+  `:go-to` — but only to a selected PAWN (a tree/item selection is ignored),
+  mouse-move records the hovered tile (`ui/set-hover!`) for the inspect panel,
   middle-drag pans, wheel zooms, WASD/arrows pan (polled per frame),
   backtick (`) toggles the debug overlay. `sim.command` is the one namespace
   that touches BOTH the world and ui-state atoms. (Space→pause is injected to
-  avoid an `input→clock` dep; backtick→debug calls `ui/toggle-debug!` directly
-  since `input` already depends on `ui-state` — inject only to cut NEW edges.)
+  avoid an `input→clock` dep; backtick→debug and mouse-move→hover call `ui/…`
+  directly since `input` already depends on `ui-state` — inject only to cut NEW
+  edges.)
 - **Pause + lifecycle.** The loop boots PAUSED. An in-window button
   (`sim.ui.hud`) and the space key toggle pause — both just flip an atom.
   The window runs on the MAIN thread (all platforms), so closing it stops the
@@ -83,6 +96,12 @@ namespaces (the directory rename happened early — never use `colony.*`).
 - **Player override pattern.** Player commands set `:priority :forced
   :source :player` on the job (the `job/forced-by-player` override). Auto-
   assignment later will check these.
+- **Selection is broader than commands.** `:selected` holds ANY selectable
+  entity id (pawn/item/tree), set by left-click cycle-select. But verbs are
+  kind-gated: `right-click!` only orders pawns — a non-pawn selection is
+  ignored, never stamped with a dead job (the move-order guard). Widening
+  `:selected` past "pawn id" is exactly why that guard exists; future context
+  actions dispatch on the selected kind. Select-then-act, RimWorld-style.
 - **One assignment chokepoint.** ALL job assignment routes through
   `sim.job/assign` (pure `world → world`: sets the job + logs `:job/assigned`).
   Player clicks, REPL helpers, and future auto-assignment all call it, so the
@@ -104,8 +123,9 @@ namespaces (the directory rename happened early — never use `colony.*`).
   it can become a world command — the input-side mirror of "HUD draws last"
   z-order. Every future widget reuses this ordering.
 - **Solid rects = a 1×1 white texture**, tinted and stretched through the
-  existing SpriteBatch — no second renderer, no begin/end juggling. Same trick
-  will back the selection box and panels, and it's the on-ramp to 32px sprites.
+  existing SpriteBatch — no second renderer, no begin/end juggling. It backs the
+  HUD bar, the debug overlay, the selection box, and the inspect panel; it was
+  the on-ramp to 32px sprites.
 - **Hot-reload rides on var late-binding.** Direct `ns/fn` calls on the GL
   thread (layers, commands) re-resolve their var each frame, so reloads land
   live. Two captured-once exceptions: values injected into the input proxy
@@ -206,11 +226,15 @@ old compiled loop body until `start!` respawns it.
   branch threads through `entity/update-entity`. A `[updated-pawn
   mutations]` shape might emerge once we have a 3rd job type (mining or
   building). Don't refactor early.
-- **Path caching vs. replanning.** Pawns compute an A* path once (`walk-toward`)
-  and follow it via `:path-index`; `:path` is only recomputed per haul *phase*
-  (`next-phase` nils it). Correct ONLY while the grid is static — nothing
-  currently changes a tile's walkability mid-walk (the debug overlay makes this
-  visible: the route is frozen until the job ends). When the first dynamic
+- **Path caching vs. replanning.** A `:go-to` path is computed once and followed
+  via `:path-index`. It's primed eagerly at assignment (`job/assign` →
+  `prime-path`) so the route lives in world state immediately — the overlay
+  draws it the instant the order is given, even while PAUSED (no tick has run).
+  `walk-toward`'s lazy `(nil? path)` branch is the fallback: it recomputes
+  whenever `:path` is nil (haul nils it per *phase* via `next-phase`; future
+  dynamic obstacles will nil it for a free recompute). Correct ONLY while the
+  grid is static — nothing currently changes a tile's walkability mid-walk. When
+  the first dynamic
   obstacle lands (walls built/removed, doors), add *step-validation*: before
   stepping, if the next cell is now impassable, nil `:path` so `walk-toward`'s
   existing `(nil? path)` branch replans for FREE — do NOT add recompute-every-
@@ -226,11 +250,12 @@ old compiled loop body until `start!` respawns it.
   window-life = process-life, and a fresh run is a fresh JVM.
 - **Sprite migration is DONE.** All three world layers draw 32rogues sprites
   (`sim.render.sprites` preloads the sheets; cell maps transcribed from the
-  `.txt` files, validated by `sim.sprites-test`). Not yet done: animated tiles
-  (`animated-tiles.png`), autotiling for walls/edges (`autotiles.png`), a
-  proper world-space selection box (pawn selection is a tint stopgap), and a
-  HUD font upgrade (default BitmapFont at 1.0 — crisp but small; gdx-freetype
-  would give larger crisp text). The map is still all-grass until worldgen.
+  `.txt` files, validated by `sim.sprites-test`). The world-space selection box
+  is now DONE (see "Tile inspect + entity selection"). Not yet done: animated
+  tiles (`animated-tiles.png`), autotiling for walls/edges (`autotiles.png`),
+  and a HUD font upgrade (default BitmapFont at 1.0 — crisp but small;
+  gdx-freetype would give larger crisp text). The map is still all-grass until
+  worldgen.
 
 ## Files to know
 
@@ -238,19 +263,28 @@ old compiled loop body until `start!` respawns it.
 - `src/sim/simulation.clj` — the pure tick function
 - `src/sim/clock.clj` — the simulation clock (fixed-timestep tick driver);
   `start!`/`stop!` (liveness), `pause!`/`resume!`/`toggle-pause!` (sim-time)
-- `src/sim/job.clj` — defmulti `advance`, haul phases, `walk-toward`
+- `src/sim/job.clj` — defmulti `advance`, haul phases, `walk-toward`, `assign`
+  (+ `prime-path`: eager go-to pathing at assign time)
 - `src/sim/ai.clj` — `decide` (the per-pawn AI step)
 - `src/sim/log.clj` — debug log helpers (append/recent/of-type/for-pawn)
+- `src/sim/inspect.clj` — PURE tile inspection: `describe-tile` (concept-line
+  strings), `selectable-at` (entities on a tile, sorted by id). Headless-tested.
 - `src/sim/command.clj` — player commands; the one bridge between the world
-  and ui-state atoms
+  and ui-state atoms. left-click = cycle-select; right-click = move order
+  (pawns only)
 - `src/sim/input.clj` — InputAdapter proxy (mouse/keys → commands + pause +
-  backtick→debug)
-- `src/sim/ui_state.clj` — camera + selection + `:debug?` view-state (plain
-  data); `debug?` / `toggle-debug!`
+  backtick→debug + mouse-move→hover)
+- `src/sim/ui_state.clj` — camera + `:selected` (any kind) + `:hover` +
+  `:debug?` view-state (plain data); `selected`/`select!`, `hover`/`set-hover!`,
+  `debug?`/`toggle-debug!`
 - `src/sim/ui/hud.clj` — HUD widgets: bounds + draw + click (the pause button)
+- `src/sim/ui/inspect_panel.clj` — bottom-right hover inspect panel (GL view of
+  `sim.inspect`; untested `draw`)
 - `src/sim/render/gdx.clj` — libGDX window, layer compositor, HUD draw, input wiring
 - `src/sim/render/sprites.clj` — 32rogues sheet loading + cached region lookup + cell maps
 - `src/sim/render/layers/{terrain,items,pawns}.clj` — pure sprite-draw layers
+- `src/sim/render/layers/selection.clj` — world-space selection box; pure
+  `selection-box-rects` + the GL `draw`
 - `src/sim/render/layers/debug.clj` — gated debug overlay (pawn paths); pure
   `path->segments` / `remaining-path` + the GL `draw`
 - `src/sim/render.clj` — terminal renderer (REPL path-viz only now)
