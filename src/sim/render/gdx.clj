@@ -32,7 +32,8 @@
    [sim.render.layers.flora   :as flora-layer]
    [sim.render.layers.items   :as items-layer]
    [sim.render.layers.pawns   :as pawns-layer]
-   [sim.render.layers.debug   :as debug-layer])
+   [sim.render.layers.debug   :as debug-layer]
+   [sim.render.layers.selection :as selection-layer])
   (:import
    (com.badlogic.gdx ApplicationAdapter Gdx Input$Keys)
    (com.badlogic.gdx.backends.lwjgl3
@@ -135,7 +136,11 @@
           (terrain/draw     w b tile-size)
           (flora-layer/draw w b tile-size)
           (items-layer/draw w b tile-size)
-          (pawns-layer/draw w b tile-size (ui/selected))
+          (pawns-layer/draw w b tile-size)
+          ;; Selection box: world-space marker around the selected entity's
+          ;; tile (any kind), reusing the 1px texture. Before the debug overlay
+          ;; so a debug path still draws on top of the box.
+          (selection-layer/draw w b tile-size px)
           ;; Debug overlay draws LAST in the world block so paths sit on top of
           ;; everything; it self-gates on (ui/debug?) and reuses the HUD's 1px
           ;; texture (px) for its solid-rect segments.
