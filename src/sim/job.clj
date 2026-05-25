@@ -71,15 +71,38 @@
     (:item-id job)     (assoc :item        (:item-id job))
     (:destination job) (assoc :destination (:destination job))))
 
+(defn- prime-path
+  "Compute a :go-to job's A* path at assignment time, so the route lives in
+   world state immediately — drawn by the path overlay the instant the order
+   is given, even while the sim is PAUSED (no tick has run yet), and followed
+   with no one-tick delay on resume. Computed from the pawn's current pos, which
+   is identical to where walk-toward would start on the next tick, so the route
+   is unchanged — only its timing moves earlier.
+
+   No-op for non-:go-to jobs (haul recomputes its path per phase via next-phase,
+   so priming there would be wrong) or when a path is already set. walk-toward's
+   lazy `(nil? path)` branch stays the replanning fallback (future dynamic
+   obstacles nil the path to force a free recompute)."
+  [world pawn-id]
+  (let [{:keys [job pos]} (entity/entity world pawn-id)]
+    (if (and (= :go-to (:type job)) (nil? (:path job)))
+      (if-let [path (pathfinding/find-path world pos (:target job))]
+        (entity/update-entity world pawn-id assoc-in [:job :path] path)
+        world)
+      world)))
+
 (defn assign
   "Assign `job` to pawn `pawn-id` and log a :job/assigned entry. Pure:
    world -> world. `overrides` (optional) is merged onto the job — pass
-   `forced-by-player` for player orders. Every assignment goes through here."
+   `forced-by-player` for player orders. A :go-to job's A* path is primed here
+   (see `prime-path`) so the route shows immediately, even paused. Every
+   assignment goes through here."
   ([world pawn-id job] (assign world pawn-id job nil))
   ([world pawn-id job overrides]
    (let [job (merge job overrides)]
      (-> world
          (entity/update-entity pawn-id assoc :job job)
+         (prime-path pawn-id)
          (log/append (assigned-entry pawn-id job))))))
 
 ;; ---------------------------------------------------------------------------

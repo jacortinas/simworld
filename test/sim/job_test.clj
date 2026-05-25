@@ -140,3 +140,38 @@
     (is (= :haul (:job e)))
     (is (= iid   (:item e))         "haul logs the item id")
     (is (= [6 0] (:destination e))  "haul logs the destination")))
+
+;; ---------------------------------------------------------------------------
+;; assign primes the go-to path eagerly — so the route exists in world state
+;; the instant the order is given, drawable by the path overlay even while the
+;; sim is PAUSED (no tick has run). Without this, :path stays nil until the
+;; first tick after resume computes it lazily in walk-toward.
+;; ---------------------------------------------------------------------------
+
+(deftest assign-go-to-primes-path-immediately
+  (testing "assigning a go-to computes the A* path at assign time — no tick run"
+    (let [[w0 pid _] (setup [0 0] [3 0])
+          w1   (job/assign w0 pid (job/go-to [3 3]) job/forced-by-player)
+          path (get-in (entity/entity w1 pid) [:job :path])]
+      (is (some? path)        "path is populated at assignment, before any advance")
+      (is (= [0 0] (first path)) "path starts at the pawn's current position")
+      (is (= [3 3] (peek path))  "path ends at the target"))))
+
+(deftest assign-go-to-unreachable-leaves-path-nil
+  (testing "if the target can't be reached, priming leaves :path nil (walk-toward
+            will mark the job :failed on the first advance, as before)"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          ;; wall the target tile itself: find-path returns nil for it
+          w0'  (update w0 :grid tile/set-tile 5 5 :wall)
+          w1   (job/assign w0' pid (job/go-to [5 5]) job/forced-by-player)
+          job  (:job (entity/entity w1 pid))]
+      (is (nil? (:path job)) "no path -> :path stays nil")
+      (is (= :go-to (:type job)) "job is still assigned"))))
+
+(deftest assign-haul-does-not-prime-path
+  (testing "haul jobs are NOT primed at assign — their path is recomputed per
+            phase (next-phase nils it), so priming there would be wrong"
+    (let [[w0 pid iid] (setup [0 0] [3 0])
+          w1 (job/assign w0 pid (job/haul iid [6 0]) job/forced-by-player)]
+      (is (nil? (get-in (entity/entity w1 pid) [:job :path]))
+          "haul :path remains nil at assign time"))))
