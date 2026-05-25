@@ -80,3 +80,59 @@
   (reduce register
           (assoc world :schedule (empty-index))
           (vals (:entities world))))
+
+;; ---------------------------------------------------------------------------
+;; System registry. band -> ordered vector of [name f], f : (world due) -> world.
+;; For :normal, due is nil and the system selects its own targets. defonce so
+;; REPL reloads keep registrations; register-system! replaces by name in place
+;; so re-running registration on reload is idempotent.
+;; ---------------------------------------------------------------------------
+
+(defonce ^:private systems (atom {:normal [] :rare [] :long []}))
+
+(defn upsert-system
+  "Pure: add [name f] to a band's system vector, or replace the existing entry
+   with that name IN PLACE (preserving order). Extracted so it can be tested
+   without mutating the global registry."
+  [v name f]
+  (let [v (or v [])
+        i (first (keep-indexed (fn [i [n _]] (when (= n name) i)) v))]
+    (if i (assoc v i [name f]) (conj v [name f]))))
+
+(defn register-system!
+  "Register (or replace, by name, preserving order) a system fn on a band.
+   f : (world due-entities) -> world. Returns name."
+  [band name f]
+  (swap! systems update band upsert-system name f)
+  name)
+
+(defn clear-systems!
+  "Drop all registered systems (test/reset helper)."
+  []
+  (reset! systems {:normal [] :rare [] :long []}))
+
+(defn- due-entities
+  "Entity maps in `band`'s bucket firing at `clock`. Missing ids (removed
+   without unregister) are skipped defensively."
+  [world band ^long clock]
+  (let [interval (long (bands band))
+        ids      (get-in world [:schedule band (due-bucket clock interval)])]
+    (keep #(get-in world [:entities %]) ids)))
+
+(defn run*
+  "Pure scheduler step given an explicit systems map. Assumes (:clock world)
+   is already advanced for this tick. Normal systems run every tick (nil due);
+   rare/long systems run over their due bucket's entities."
+  [world systems-map]
+  (let [clock    (long (:clock world))
+        run-band (fn [w band due]
+                   (reduce (fn [w [_ f]] (f w due)) w (get systems-map band)))]
+    (-> world
+        (run-band :normal nil)
+        (as-> w (run-band w :rare (due-entities w :rare clock)))
+        (as-> w (run-band w :long (due-entities w :long clock))))))
+
+(defn run
+  "Scheduler step using the globally registered systems."
+  [world]
+  (run* world @systems))

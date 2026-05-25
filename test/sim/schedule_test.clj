@@ -61,3 +61,44 @@
     (is (contains? (get-in w1 [:schedule :long 130]) 130))  ; item id 130 -> long bucket 130
     (is (contains? (get-in w1 [:schedule :rare 7]) 7))      ; rare id 7 -> rare bucket 7
     (is (= (:schedule w1) (:schedule w2)) "reindex is idempotent")))
+
+(deftest run*-dispatch-order-and-bands
+  (testing "normal systems run every tick with nil due; rare systems get the due bucket"
+    (let [w0 (-> {:clock 0
+                  :entities {1 (rare 1) 2 (rare 2)}}
+                 schedule/reindex)
+          sysmap {:normal [[:mark    (fn [w _due] (update w :trace (fnil conj []) :normal))]]
+                  :rare   [[:collect (fn [w due]  (update w :seen (fnil into [])
+                                                          (map :id) due))]]}
+          ;; clock 1 -> rare bucket 1 -> entity id 1 due
+          w1 (schedule/run* (assoc w0 :clock 1) sysmap)]
+      (is (= [:normal] (:trace w1)) "normal system ran once")
+      (is (= [1] (:seen w1)) "only the due rare entity (id 1) was processed"))))
+
+(deftest run*-rare-coverage-exactly-once
+  (testing "over one full rare interval, every rare entity is processed exactly once"
+    (let [ids (range 1 30)
+          w0  (-> {:clock 0
+                   :entities (into {} (map (fn [i] [i (rare i)])) ids)}
+                  schedule/reindex)
+          sysmap {:rare [[:collect (fn [w due]
+                                     (update w :seen (fnil into []) (map :id) due))]]}
+          swept (reduce (fn [w c] (schedule/run* (assoc w :clock c) sysmap))
+                        w0
+                        (range (:rare schedule/bands)))
+          freq  (frequencies (:seen swept))]
+      (is (= (set ids) (set (keys freq))) "every id processed at least once")
+      (is (every? #(= 1 %) (vals freq)) "...and exactly once"))))
+
+(deftest upsert-system-replaces-by-name-preserving-order
+  ;; Pure test — does NOT touch the global registry (which sim.simulation
+  ;; populates at load), so it can't poison other namespaces' tests.
+  (let [f1 (fn [w _] (update w :log (fnil conj []) :a1))
+        f2 (fn [w _] (update w :log (fnil conj []) :b))
+        f3 (fn [w _] (update w :log (fnil conj []) :a2))
+        v  (-> [] (schedule/upsert-system :a f1)
+                  (schedule/upsert-system :b f2)
+                  (schedule/upsert-system :a f3))]
+    (is (= [:a :b] (mapv first v)) "names in order; :a kept its slot")
+    (is (= [:a2 :b] (:log (reduce (fn [w [_ f]] (f w nil)) {} v)))
+        "the replacement fn (a2) is used; order preserved")))
