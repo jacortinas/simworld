@@ -68,3 +68,26 @@
       (is (= 3 (ui/selected)) "first click selects it")
       (command/left-click! 4 4)
       (is (= 3 (ui/selected)) "second click re-selects the same id (wrap of a 1-elem list)"))))
+
+(deftest right-click-orders-a-selected-pawn
+  (testing "right-clicking a passable tile with a pawn selected assigns a go-to job"
+    (let [pawn {:id 2 :kind :pawn :name "Dave" :pos [3 3]
+                :job nil :carrying nil :path nil}]
+      (setup! [pawn])
+      (command/left-click! 3 3)                 ; select the pawn
+      (is (= 2 (ui/selected)))
+      (command/right-click! 4 4)                ; order a move to a passable tile
+      (is (= :go-to (:type (:job (get-in @world/world [:entities 2]))))
+          "pawn receives a go-to job"))))
+
+(deftest right-click-ignores-a-selected-non-pawn
+  (testing "right-clicking with a tree selected does NOT stamp a job on the tree"
+    (let [tree {:id 1 :kind :tree :pos [3 3]}]
+      (setup! [tree])
+      (command/left-click! 3 3)                 ; select the tree
+      (is (= 1 (ui/selected)))
+      (command/right-click! 4 4)                ; attempt an order
+      (is (nil? (:job (get-in @world/world [:entities 1])))
+          "tree must not receive a job")
+      (is (empty? (filter #(= :job/assigned (:type %)) (:log @world/world)))
+          "and no false :job/assigned log entry is written"))))

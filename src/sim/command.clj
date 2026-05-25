@@ -46,13 +46,16 @@
 (defn right-click!
   "RimWorld right-click: order the selected pawn. For now the only verb is
    'go here' — move to the clicked tile if it's in-bounds and passable.
-   Context actions (haul item, harvest plant) arrive as we add job types
-   and a float-menu; today, move is the universal default."
+   Only PAWNS take orders: selection now spans any selectable kind (trees,
+   items), so a non-pawn selection ignores right-click rather than stamping a
+   dead job onto it. Context actions (haul item, harvest plant) arrive as we
+   add job types and a float-menu; today, move is the universal default."
   [tx ty]
   (when-let [sel (ui/selected)]
     (let [w    @world/world
           grid (:grid w)]
-      (when (and (in-bounds? grid tx ty)
+      (when (and (= :pawn (:kind (entity/entity w sel)))
+                 (in-bounds? grid tx ty)
                  (tile/passable? (tile/tile-at grid tx ty)))
         (swap! world/world job/assign sel (job/go-to [tx ty]) job/forced-by-player))))
   nil)
