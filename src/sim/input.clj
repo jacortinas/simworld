@@ -13,6 +13,7 @@
      middle-drag  → pan
      wheel        → zoom
      space        → toggle pause
+     mouse-move   → record hovered tile (sim.ui-state/set-hover!)
 
    UI-eats-the-click: on-screen widgets (the pause button) live in fixed
    screen space and sit ON TOP of the world visually. Input mirrors that
@@ -63,6 +64,17 @@
       (scrolled [_amount-x amount-y]
         (ui/zoom-by! (if (pos? (double amount-y)) 1.1 0.9))
         true)
+
+      ;; Cursor moved with no button down: record the hovered tile so the
+      ;; inspect panel can read it. Returns false — hover must NEVER consume
+      ;; the event. Calls ui/set-hover! directly (we already depend on
+      ;; sim.ui-state), same precedent as backtick->debug. Stores raw,
+      ;; possibly off-map coords; sim.inspect bounds-checks.
+      (mouseMoved [screen-x screen-y]
+        (let [height  (long (:height (:grid (world-fn))))
+              [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
+          (ui/set-hover! [tx ty]))
+        false)
 
       (keyDown [keycode]
         (condp = (int keycode)
