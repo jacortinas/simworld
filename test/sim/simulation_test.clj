@@ -14,6 +14,11 @@
     (is (= 1 (:clock w1)))
     (is (= 10 (:clock (nth (iterate simulation/tick w0) 10))))))
 
+(deftest initial-world-has-empty-schedule
+  (let [w (world/initial-world {})]
+    (is (= 125 (count (get-in w [:schedule :rare]))))
+    (is (= 1000 (count (get-in w [:schedule :long]))))))
+
 (deftest events-drain-on-tick
   (let [w0 (-> (world/initial-world {})
                (events/enqueue (events/event :noop)))

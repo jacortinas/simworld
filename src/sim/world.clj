@@ -7,8 +7,9 @@
 
    When/if contention shows up, partition by *aspect* — never by entity."
   (:require
-   [sim.entity  :as entity]
-   [sim.tile    :as tile]
+   [sim.entity   :as entity]
+   [sim.schedule :as schedule]
+   [sim.tile     :as tile]
    [sim.worldgen :as worldgen]))
 
 (set! *warn-on-reflection* true)
@@ -20,6 +21,7 @@
      {:clock     0          ; tick counter
       :grid      {...}      ; tiles + width/height (see sim.tile)
       :entities  {id ent}   ; entities by id
+      :schedule  {...}      ; derived tick-band bucket index (see sim.schedule)
       :events    []         ; pending events (consumed by sim each tick)
       :rng-seed  12345}"
   [{:keys [width height seed] :or {width 40 height 20 seed 12345}}]
@@ -27,6 +29,7 @@
     {:clock     0
      :grid      grid
      :entities  {}
+     :schedule  (schedule/empty-index)
      :events    []
      :log       []
      :rng-seed  seed}))
