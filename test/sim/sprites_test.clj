@@ -11,8 +11,7 @@
    [clojure.test :refer [deftest is testing]]
    [clojure.java.io :as io]
    [sim.render.sprites :as sprites]
-   [sim.entity :as entity]
-   [sim.tile :as tile]))
+   [sim.defs :as defs]))
 
 (def ^:private sheet-files
   {:tiles  "32rogues/tiles.png"
@@ -45,7 +44,7 @@
             "PNG grid dims should match the expected cell grid")))))
 
 (deftest every-terrain-type-has-a-sprite
-  (doseq [k (keys tile/terrain)]
+  (doseq [k (defs/ids :terrain)]
     (is (contains? sprites/terrain->cell k)
         (str "terrain " k " has no sprite cell — would fall back to grass"))))
 
@@ -62,7 +61,7 @@
       (is (and (<= 0 r) (< r rr)) (str "row " r " out of 0.." (dec rr))))))
 
 (deftest every-item-material-has-a-sprite
-  (doseq [m (keys entity/item-defs)]
+  (doseq [m (defs/ids :material)]
     (is (contains? sprites/material->cell m)
         (str "item material " m " has no sprite cell"))))
 

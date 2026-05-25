@@ -8,6 +8,7 @@
    See docs/superpowers/specs/2026-05-24-tick-bands-design.md."
   (:require
    [sim.ai       :as ai]
+   [sim.defs     :as defs]
    [sim.entity   :as entity]
    [sim.events   :as events]
    [sim.schedule :as schedule]))
@@ -27,17 +28,15 @@
   (let [[evs world'] (events/drain world)]
     (events/apply-events world' evs)))
 
-;; 0.0125 = old per-tick rate (0.0001) x rare interval (125), so the effective
-;; decay-per-second is unchanged now that decay fires ~once per 125 ticks.
-(def ^:private ^:const need-decay-per-rare 0.0125)
-
 (defn- decay-needs
-  "Decrement each need toward 0 by one rare-tick's worth."
+  "Decrement each need toward 0 by one rare-tick's worth. The per-need rate is
+   content (sim.defs/need-decay, from resources/defs/needs.edn); all needs ship
+   at the same 0.0125 so behavior is unchanged."
   [pawn]
   (update pawn :needs
           (fn [needs]
             (reduce-kv
-             (fn [m k v] (assoc m k (max 0.0 (- (double v) need-decay-per-rare))))
+             (fn [m k v] (assoc m k (max 0.0 (- (double v) (defs/need-decay k)))))
              {} needs))))
 
 (defn decay-needs-system

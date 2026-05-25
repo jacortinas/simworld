@@ -1,0 +1,11 @@
+;; Terrain defs — loaded by sim.defs into (:terrain db). Content, not code.
+;; :move-cost is a traversal-cost multiplier (1.0 = baseline, higher = slower);
+;; :passable? false makes pathfinding refuse the tile; :char is legacy (terminal
+;; renderer only — sprites drive real rendering). Values loosely model RimWorld's
+;; terrain modifiers (gravel ~87%, paved 100%); tune at will.
+{:grass  {:char \. :move-cost 1.0  :passable? true}
+ :dirt   {:char \, :move-cost 1.15 :passable? true}
+ :gravel {:char \: :move-cost 1.30 :passable? true}
+ :stone  {:char \# :move-cost 1.0  :passable? false}
+ :water  {:char \~ :move-cost 2.5  :passable? true}
+ :wall   {:char \# :move-cost 1.0  :passable? false}}

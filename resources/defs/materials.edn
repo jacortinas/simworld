@@ -1,0 +1,7 @@
+;; Material defs — loaded by sim.defs into (:material db). Content, not code.
+;; :weight is forward content (no reader yet); :char is legacy (terminal renderer
+;; only). Items reference a material by keyword (:material :wood) and the def is
+;; resolved here at use time.
+{:stone {:char \s :weight 1.0}
+ :wood  {:char \w :weight 0.7}
+ :food  {:char \f :weight 0.3}}

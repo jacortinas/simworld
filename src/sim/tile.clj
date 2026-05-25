@@ -1,35 +1,29 @@
 (ns sim.tile
-  "Tile types, terrain definitions, and grid access helpers.
+  "Tile types and grid access helpers.
+
+   Terrain DEFS (move-cost / passable? / char) are content — they live in
+   sim.defs (resources/defs/terrain.edn), not here. This namespace owns the
+   grid representation and thin lookup wrappers that delegate to sim.defs.
 
    The grid is currently a persistent vector of tile-type keywords, indexed
    linearly as (+ x (* y width)). This is deliberate: when we later migrate to
    a primitive `long-array`, the indexing scheme is identical and the call sites
-   in pathfinding / render stay the same.")
+   in pathfinding / render stay the same."
+  (:require
+   [sim.defs :as defs]))
 
 (set! *warn-on-reflection* true)
 
 ;; ---------------------------------------------------------------------------
-;; Terrain definitions
-;;
-;; :move-cost is a multiplier on traversal cost — 1.0 = baseline, higher = slower.
-;; :passable? false means pathfinding will refuse to route through this tile.
-;;
-;; The values below are placeholders modeled loosely on RimWorld's terrain
-;; modifiers (gravel ~87%, marsh ~36%, paved 100%). Tune at will.
+;; Terrain lookups — delegate to the Def DB (sim.defs). The defs themselves
+;; (move-cost / passable? / char) are content in resources/defs/terrain.edn.
 ;; ---------------------------------------------------------------------------
 
-(def terrain
-  {:grass    {:char \. :move-cost 1.0  :passable? true}
-   :dirt     {:char \, :move-cost 1.15 :passable? true}
-   :gravel   {:char \: :move-cost 1.30 :passable? true}
-   :stone    {:char \# :move-cost 1.0  :passable? false}
-   :water    {:char \~ :move-cost 2.5  :passable? true}
-   :wall     {:char \# :move-cost 1.0  :passable? false}})
-
 (defn terrain-info
-  "Look up the static properties of a terrain type."
+  "Look up the static properties of a terrain type. Unknown keys fall back to
+   the :grass def (the fallback lives in sim.defs/terrain)."
   [terrain-key]
-  (get terrain terrain-key (terrain :grass)))
+  (defs/terrain terrain-key))
 
 (defn passable?
   [terrain-key]

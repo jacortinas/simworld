@@ -10,8 +10,8 @@
      2. The renderer is pure-ish: (frame world) returns a string. (draw!)
         is the impure half that pushes it to stdout."
   (:require
-   [sim.entity :as entity]
-   [sim.tile   :as tile]))
+   [sim.defs :as defs]
+   [sim.tile :as tile]))
 
 (set! *warn-on-reflection* true)
 
@@ -69,7 +69,7 @@
                ch   (cond
                       pawn \@
                       over over
-                      item (:char (entity/item-defs (:material item)))
+                      item (:char (defs/material (:material item)))
                       :else (:char (tile/terrain-info (tile/tile-at grid x y))))]
            (.append sb ch)))
        (.append sb \|)

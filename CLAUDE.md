@@ -96,6 +96,26 @@ namespaces (the directory rename happened early — never use `colony.*`).
   hinges on this.
 - **Pure tick function.** `(sim.simulation/tick world) → world'`. The
   sim clock atomically swaps with this. No mutable state inside sim code.
+  *One deliberate exception:* `tick` (and pathfinding) transitively read the
+  immutable Def DB (`sim.defs`, a global atom). Because defs never change after
+  load, this is morally a constant read — determinism holds (same-seed runs stay
+  identical). See the content/state split below.
+- **Content/state split (the Def DB).** Game CONTENT lives in `sim.defs` — a
+  `defonce` registry loaded from `resources/defs/*.edn` at namespace-load,
+  spec-validated, repopulated on every reload (edit EDN + `(reload-defs!)` lands
+  live; the atom identity is stable like the world atom). It is **never in the
+  world map and never saved** — `sim.save` doesn't touch it. This is `docs/
+  rimworld-engine-internals.md` §3's two rules: (1) state references content by
+  *keyword* (`:material :wood`, a `:grass` grid cell), never by embedding, so the
+  world stays an acyclic map nippy writes directly; (2) immutable defs separate
+  from mutable state ⇒ tiny saves, forward-compatible saves, trivial mod merging,
+  zero cyclic-graph pain. Migrated content (use-time reads only): terrain
+  (`sim.tile` wrappers delegate to `defs/terrain`), materials (`defs/material`),
+  need-decay rates (`defs/need-decay`). Lookups have a graceful fallback (unknown
+  terrain → grass), so a dangling reference degrades, not crashes. **Seam left:**
+  construction-time content (pawn starting `:needs`, `:ticker-type` defaults) is
+  still hard-coded in `make-*` — making it def-driven would force a
+  defs-before-entities load order, so it waits for a thing-def step.
 - **Scheduler, not a uniform tick.** `tick` = `advance-clock → schedule/run`.
   Per-tick work is registered band systems (`schedule/register-system!`), not a
   hand-written pipeline. New periodic work = a system on a band; new bucketed
@@ -217,6 +237,7 @@ terminal. On macOS compose the `:mac` alias: `clj -M:mac:repl`.
 (status)                    ;; loop/paused/tick/counts at a glance
 (pause!) (resume!)          ;; or click the in-window button / press space
 (debug!)                    ;; toggle path overlay (or press backtick in-window)
+(reload-defs!)              ;; reload content from resources/defs/*.edn (no ns reload)
 (tick! 100)                 ;; manual step — works even while paused
 (quit!)                     ;; close the window = exit the process
 ```
@@ -276,6 +297,12 @@ old compiled loop body until `start!` respawns it.
 
 ## Files to know
 
+- `src/sim/defs.clj` — the Def DB: `defonce` content registry loaded from
+  `resources/defs/*.edn` at ns-load, spec-validated. Lookups `terrain`/
+  `material`/`need`/`need-decay`/`ids`; `load!`/`load-sources!` (the mod seam).
+  NOT in the world; NOT saved.
+- `resources/defs/{terrain,materials,needs}.edn` — game content (move-cost/
+  passable?/char; weight/char; per-need decay). Edit + `(reload-defs!)` to retune.
 - `src/sim/world.clj` — the atom + initial-state shape (incl. `:schedule`)
 - `src/sim/simulation.clj` — the pure tick function + band-system defs/registration
 - `src/sim/schedule.clj` — tick-band scheduler: bucket math, the derived bucket

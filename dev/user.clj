@@ -11,6 +11,7 @@
    [clojure.repl      :refer [doc source dir]]
    [sim.world     :as world]
    [sim.clock :as clock]
+   [sim.defs      :as defs]
    [sim.simulation :as simulation]
    [sim.pathfinding :as pathfinding]
    [sim.render    :as render]
@@ -144,6 +145,14 @@
   ([n]
    (dotimes [_ n] (swap! world/world simulation/tick))
    (:clock @world/world)))
+
+(defn reload-defs!
+  "Reload game CONTENT (terrain/material/need defs) from resources/defs/*.edn
+   without reloading any namespace: edit an EDN file, call this, and the next
+   tick/render uses the new values (the registry atom's identity is stable).
+   Returns the categories loaded."
+  []
+  (keys (defs/load!)))
 
 (defn save-game!
   ([] (save/save! @world/world))

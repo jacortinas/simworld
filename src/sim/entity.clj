@@ -44,11 +44,9 @@
 ;; pawn's `:carrying` is the item's id. Drop reverses both.
 ;; ---------------------------------------------------------------------------
 
-(def item-defs
-  "Static info for each material. :char is what the renderer shows."
-  {:stone {:char \s :weight 1.0}
-   :wood  {:char \w :weight 0.7}
-   :food  {:char \f :weight 0.3}})
+;; Material DEFS (weight / char) are content — they live in sim.defs
+;; (resources/defs/materials.edn). An item stores only its :material keyword;
+;; the def is resolved via sim.defs/material at use time.
 
 (defn make-item
   "Construct an item of the given material at [x y]."
