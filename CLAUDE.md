@@ -88,6 +88,20 @@ namespaces (the directory rename happened early — never use `colony.*`).
   loop and exits the process — window-life = process-life, under `:run` and
   `:repl` alike. The terminal renderer (`sim.render`) still exists for REPL
   path-viz but no longer runs inside the loop.
+- **Layer 3 — autonomy + content (the survival loop).** Pawns now run
+  themselves: a data think-tree (`sim.think`) picks behavior — eat when hungry
+  (walk to nearest reservable food, consume it, refill `:food`), else wander.
+  Needs decay on the rare band; the hunger threshold and decay rates are content
+  (`resources/defs/*.edn`, loaded by `sim.defs`). Reservations
+  (`sim.reservation`) keep two pawns off the same target. Verified end-to-end:
+  a hungry pawn seeks, eats, and goes back to wandering. Job types: `:go-to`,
+  `:haul`, `:eat`. NOT yet built: auto-haul (the gather loop — needs the haul
+  think-tree leaf reading `stockpile-cells`).
+- **Stockpile zoning + placement mode.** `Z` enters zoning mode; left-DRAG
+  paints a stockpile rectangle, SHIFT+left-DRAG erases cells, `Esc`/right-click
+  exits. Zones are saved world state (`sim.zone`, `:zones`); the live drag
+  rectangle is view state. The drag-rectangle core is reusable for future
+  building placement. Pawns don't USE stockpiles yet (that's the haul leaf).
 
 ## Load-bearing architectural decisions
 
@@ -148,8 +162,12 @@ namespaces (the directory rename happened early — never use `colony.*`).
   assignment later will check these.
 - **Placement mode (reusable drag-rectangle).** `sim.ui-state/:mode`
   (`:select` default | `:zone-stockpile`) gates input: in zoning mode a left-DRAG
-  paints a rectangle (`Z` enters, `Esc`/right-click cancels). The in-progress
-  rect lives in ui-state `:drag` (a preview — VIEW state, never saved); the
+  paints a rectangle (`Z` enters, `Esc`/right-click cancels), and SHIFT+left-DRAG
+  ERASES cells (`zone/remove-cells`, dropping emptied zones; preview turns red).
+  The erase-ness is decided by whether Shift is held at drag-START and stored as
+  `:erase?` in the drag, so it's stable for the whole gesture (RimWorld's
+  pick-the-tool-then-drag feel). The in-progress rect lives in ui-state `:drag`
+  (a preview — VIEW state, never saved); the
   committed result is a stockpile zone in the WORLD (`:zones`, saved). Same
   world-vs-view split as `:selected`/`:hover`. The drag/commit core is
   payload-agnostic — `sim.zone/cells-in-rect` + the mode machinery are what a

@@ -62,3 +62,16 @@
         (-> world
             (update :zones (fnil conj []) {:id id :kind :stockpile :cells cells})
             (assoc :next-zone-id (inc (long id))))))))
+
+(defn remove-cells
+  "Remove the rectangle from `a` to `b` from every stockpile zone, dropping any
+   zone left with no cells. Returns world'. The erase twin of add-stockpile."
+  [world a b]
+  (let [doomed (cells-in-rect a b)]
+    (update world :zones
+            (fn [zs]
+              (into []
+                    (keep (fn [z]
+                            (let [cells' (reduce disj (:cells z) doomed)]
+                              (when (seq cells') (assoc z :cells cells')))))
+                    (or zs []))))))

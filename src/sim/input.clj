@@ -9,7 +9,8 @@
 
    RimWorld mapping:
      left-click   → UI hit-test first; if nothing caught it, select a pawn
-                    (in zoning mode: left-DRAG paints a stockpile rectangle)
+                    (in zoning mode: left-DRAG paints a stockpile rectangle;
+                     SHIFT+left-DRAG erases cells from existing stockpiles)
      right-click  → order (sim.command/right-click!); in zoning mode: cancel mode
      middle-drag  → pan
      wheel        → zoom
@@ -28,11 +29,18 @@
    [sim.command  :as command]
    [sim.ui-state :as ui])
   (:import
-   (com.badlogic.gdx InputAdapter Input$Buttons Input$Keys)
+   (com.badlogic.gdx Gdx InputAdapter Input$Buttons Input$Keys)
    (com.badlogic.gdx.graphics OrthographicCamera)
    (com.badlogic.gdx.math Vector3)))
 
 (set! *warn-on-reflection* true)
+
+(defn- shift-down?
+  "Is either Shift key currently held? Polled from live libGDX input — used to
+   pick the erase variant of a zoning drag at the moment it begins."
+  []
+  (or (.isKeyPressed Gdx/input (int Input$Keys/SHIFT_LEFT))
+      (.isKeyPressed Gdx/input (int Input$Keys/SHIFT_RIGHT))))
 
 (defn- screen->tile
   "Unproject a screen click through the world camera to a tile [tx ty].
@@ -103,7 +111,9 @@
                 ;; the mode; otherwise the usual select / order commands.
                 Input$Buttons/LEFT
                 (if (= (ui/mode) :zone-stockpile)
-                  (ui/set-drag! {:start [tx ty] :current [tx ty]})
+                  ;; Shift held at drag-start makes this an ERASE drag; the flag
+                  ;; sticks for the whole drag (drives preview color + commit).
+                  (ui/set-drag! {:start [tx ty] :current [tx ty] :erase? (shift-down?)})
                   (command/left-click! tx ty))
 
                 Input$Buttons/RIGHT
@@ -142,8 +152,10 @@
                    (= (int button) Input$Buttons/LEFT)
                    (= (ui/mode) :zone-stockpile)
                    (ui/drag))
-            (let [{:keys [start current]} (ui/drag)]
-              (command/commit-stockpile! start current)
+            (let [{:keys [start current erase?]} (ui/drag)]
+              (if erase?
+                (command/erase-stockpile!  start current)
+                (command/commit-stockpile! start current))
               (ui/clear-drag!)
               true)
             false))))))

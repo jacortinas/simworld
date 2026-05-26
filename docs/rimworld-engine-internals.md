@@ -113,6 +113,19 @@ This is the single most important early decision for keeping content data-driven
 
 **Where we are:** Layers 1–2.5 (tiles, pawns w/ needs+skills, A*, `:go-to`/`:haul` jobs, debug log) + libGDX rendering. Uniform 30 Hz tick; `decide` is a cond; content is hard-coded; one world atom (good).
 
+> **Build status (2026-05-26):** Steps 1–3 **DONE**; step 4 **PARTIAL** — the
+> think-tree + eat + wander shipped (the autonomous survival loop), the haul leaf
+> is pending. Alongside step 4 we built **stockpile zones + a reusable
+> drag-rectangle placement mode** (with shift-drag erase) as the prerequisite for
+> auto-haul. Steps 5–8 not started. Choices made along the way: tick bands use
+> a derived bucket index (rebuilt on load, not saved); the Def DB is a global
+> `defonce` registry of *use-time* content (terrain/materials/needs), never
+> saved; reservations are a *derived query* over pawns' jobs (no stored state,
+> release is automatic); the think-tree is data with keyword-referenced
+> preds/givers (EDN-ready); placement mode splits saved zones from view-only drag
+> state. Determinism/MT note: a deferred RNG-threading pass is the real
+> prerequisite for parallel ticks (wander still uses global `rand`).
+
 **Recommended ordering** (★ = changed/elevated vs. the original "order of operations"):
 
 1. **★ Tick bands + staggering** — refactor `tick`: classify work into Normal / Rare(250-equiv) / Long. Move `decay-needs` off the per-tick path onto a rare band; keep pathing on Normal. Generalize `moves-this-tick?` into a band/bucket scheduler. *Do this early — it's the cheapest now and the foundation everything else sits on.* (Pick our own intervals; we run 30 Hz, so a "rare" band of ~125 ticks ≈ RimWorld's ~4 s feel.)

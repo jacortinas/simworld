@@ -69,3 +69,10 @@
   [start current]
   (swap! world/world zone/add-stockpile start current)
   nil)
+
+(defn erase-stockpile!
+  "Erase a dragged rectangle (tile coords) from existing stockpile zones — the
+   shift-drag twin of commit-stockpile!. Zones left empty are dropped."
+  [start current]
+  (swap! world/world zone/remove-cells start current)
+  nil)

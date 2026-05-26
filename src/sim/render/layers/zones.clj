@@ -16,8 +16,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private zone-color    (Color. 0.2 0.8 0.3 0.30))  ; translucent green
-(def ^:private preview-color (Color. 0.4 0.9 0.5 0.45))  ; brighter live preview
+(def ^:private zone-color          (Color. 0.2 0.8 0.3 0.30)) ; translucent green
+(def ^:private preview-color       (Color. 0.4 0.9 0.5 0.45)) ; brighter add preview
+(def ^:private erase-preview-color (Color. 0.95 0.35 0.3 0.45)) ; red erase preview
 
 (defn cell-rect
   "Fill rect [px py w h] (world px, doubles) for tile [x y], with the
@@ -48,8 +49,9 @@
     (.setColor batch zone-color)
     (doseq [[x y w h] (cells->rects (zone/stockpile-cells world) tile-size height)]
       (.draw batch pixel (float x) (float y) (float w) (float h)))
-    (when-let [cells (drag-preview-cells (ui/drag))]
-      (.setColor batch preview-color)
-      (doseq [[x y w h] (cells->rects cells tile-size height)]
-        (.draw batch pixel (float x) (float y) (float w) (float h))))
+    (let [d (ui/drag)]
+      (when-let [cells (drag-preview-cells d)]
+        (.setColor batch (if (:erase? d) erase-preview-color preview-color))
+        (doseq [[x y w h] (cells->rects cells tile-size height)]
+          (.draw batch pixel (float x) (float y) (float w) (float h)))))
     (.setColor batch Color/WHITE)))

@@ -55,6 +55,32 @@
               (zone/add-stockpile [5 5] [5 5]))]
     (is (= #{[0 0] [5 5]} (zone/stockpile-cells w)))))
 
+(deftest remove-cells-shrinks-a-zone
+  (testing "erasing part of a zone's rectangle removes just those cells"
+    (let [w0 (-> (world/initial-world {:width 10 :height 10})
+                 (zone/add-stockpile [0 0] [3 0]))      ; {[0 0][1 0][2 0][3 0]}
+          w  (zone/remove-cells w0 [2 0] [3 0])]        ; erase [2 0],[3 0]
+      (is (= #{[0 0] [1 0]} (:cells (first (zone/zones w)))))
+      (is (not (zone/cell-zoned? w [2 0]))))))
+
+(deftest remove-cells-drops-a-fully-covered-zone
+  (testing "a zone whose every cell is erased is removed entirely"
+    (let [w0 (-> (world/initial-world {:width 10 :height 10})
+                 (zone/add-stockpile [0 0] [1 0]))
+          w  (zone/remove-cells w0 [0 0] [2 2])]        ; covers the whole zone
+      (is (empty? (zone/zones w))))))
+
+(deftest remove-cells-leaves-other-cells-and-zones
+  (testing "only cells inside the erase rect are removed; other zones untouched"
+    (let [w0 (-> (world/initial-world {:width 10 :height 10})
+                 (zone/add-stockpile [0 0] [2 0])       ; zone A
+                 (zone/add-stockpile [5 5] [6 5]))      ; zone B
+          w  (zone/remove-cells w0 [0 0] [0 0])]        ; erase only [0 0] from A
+      (is (= #{[1 0] [2 0]} (:cells (first (zone/zones w)))) "A shrank")
+      (is (= #{[5 5] [6 5]} (zone/stockpile-cells (assoc w :zones [(second (zone/zones w))])))
+          "B is untouched")
+      (is (= 2 (count (zone/zones w))) "both zones remain (A still non-empty)"))))
+
 (deftest zones-survive-save-load
   (testing "zones are plain world state and round-trip through nippy"
     (let [w (-> (world/initial-world {:width 10 :height 10})
