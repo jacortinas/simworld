@@ -25,6 +25,7 @@
    [sim.clock         :as clock]
    [sim.screens]       ; loaded so we can use sim.screens/draw-screen fully-qualified
    [sim.screens.play]                    ; side-effect: register :play defmethod
+   [sim.screens.main-menu]              ; side-effect: register :main-menu defmethod
    [sim.ui-state      :as ui]
    [sim.ui.hud        :as hud]
    [sim.world         :as world]
@@ -102,7 +103,9 @@
                           :tile-size tile-size
                           :world-fn  (fn [] @world-atom)})]
           (swap! sim.app/processors assoc :play play-proc)
-          (.setInputProcessor (Gdx/input) play-proc)))
+          (.setInputProcessor (Gdx/input) play-proc))
+        ;; Main-menu processor — built once GL exists, registered in app/processors.
+        (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor)))
 
       (render []
         (poll-camera-keys!)
