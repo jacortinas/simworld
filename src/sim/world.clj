@@ -22,17 +22,20 @@
       :grid      {...}      ; tiles + width/height (see sim.tile)
       :entities  {id ent}   ; entities by id
       :schedule  {...}      ; derived tick-band bucket index (see sim.schedule)
+      :zones     []         ; stockpile zones (see sim.zone)
       :events    []         ; pending events (consumed by sim each tick)
       :rng-seed  12345}"
   [{:keys [width height seed] :or {width 40 height 20 seed 12345}}]
   (let [grid (tile/make-grid width height :grass)]
-    {:clock     0
-     :grid      grid
-     :entities  {}
-     :schedule  (schedule/empty-index)
-     :events    []
-     :log       []
-     :rng-seed  seed}))
+    {:clock        0
+     :grid         grid
+     :entities     {}
+     :schedule     (schedule/empty-index)
+     :zones        []          ; stockpile zones (see sim.zone); plain saved state
+     :next-zone-id 1           ; monotonic zone-id counter
+     :events       []
+     :log          []
+     :rng-seed     seed}))
 
 ;; ---------------------------------------------------------------------------
 ;; The atom. `defonce` is critical — it survives ns reloads, so we can

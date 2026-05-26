@@ -26,7 +26,9 @@
   (atom {:camera   {:x 400.0 :y 200.0 :zoom 0.8}
          :selected nil
          :hover    nil
-         :debug?   false}))
+         :debug?   false
+         :mode     :select   ; :select | :zone-stockpile (placement mode)
+         :drag     nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
 
 (defn camera [] (:camera @ui-state))
 
@@ -63,6 +65,38 @@
    can echo the state. `not` on a nil (absent key) yields true — reload-safe."
   []
   (:debug? (swap! ui-state update :debug? not)))
+
+;; ---------------------------------------------------------------------------
+;; Interaction mode + in-progress placement drag. Both VIEW state — the mode is
+;; how you're interacting (select vs. zoning), the drag is a live preview. Never
+;; serialized. mode/drag default safely when absent (reload/reset-safe).
+;; ---------------------------------------------------------------------------
+
+(defn mode
+  "Current interaction mode: :select (default) or :zone-stockpile."
+  []
+  (:mode @ui-state :select))
+
+(defn set-mode!
+  "Set the interaction mode; returns it."
+  [m]
+  (swap! ui-state assoc :mode m)
+  m)
+
+(defn drag
+  "In-progress placement rectangle {:start [tx ty] :current [tx ty]}, or nil."
+  []
+  (:drag @ui-state))
+
+(defn set-drag!
+  "Store the in-progress placement rectangle (tile coords)."
+  [d]
+  (swap! ui-state assoc :drag d))
+
+(defn clear-drag!
+  "Drop the in-progress placement rectangle."
+  []
+  (swap! ui-state assoc :drag nil))
 
 (defn pan!
   "Shift the camera center by [dx dy] world units."

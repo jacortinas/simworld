@@ -29,6 +29,7 @@
    [sim.ui.inspect-panel :as inspect-panel]
    [sim.render.sprites :as sprites]
    [sim.render.layers.terrain :as terrain]
+   [sim.render.layers.zones   :as zones-layer]
    [sim.render.layers.flora   :as flora-layer]
    [sim.render.layers.items   :as items-layer]
    [sim.render.layers.pawns   :as pawns-layer]
@@ -134,6 +135,9 @@
           (.begin b)
           (.setColor b Color/WHITE)            ; sprites draw untinted
           (terrain/draw     w b tile-size)
+          ;; Stockpile-zone floor overlay + live drag preview: above terrain,
+          ;; below flora/items/pawns so stored items show on top of the zone.
+          (zones-layer/draw w b tile-size px)
           (flora-layer/draw w b tile-size)
           (items-layer/draw w b tile-size)
           (pawns-layer/draw w b tile-size)

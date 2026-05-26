@@ -13,6 +13,7 @@
    [sim.clock :as clock]
    [sim.defs      :as defs]
    [sim.reservation :as reservation]
+   [sim.zone      :as zone]
    [sim.simulation :as simulation]
    [sim.pathfinding :as pathfinding]
    [sim.render    :as render]
@@ -222,6 +223,25 @@
   [pawn-id item-id destination]
   (swap! world/world job/assign pawn-id (job/haul item-id destination) job/forced-by-player)
   :assigned)
+
+(defn zone!
+  "Designate a stockpile zone over the inclusive rectangle [x0 y0]..[x1 y1]
+   (in-bounds/passable/unzoned cells only). The REPL twin of dragging it out in
+   the window. Returns the zone count."
+  [a b]
+  (swap! world/world zone/add-stockpile a b)
+  (count (zone/zones @world/world)))
+
+(defn clear-zones!
+  "Remove all stockpile zones (dev convenience; the pair of `zone!`)."
+  []
+  (swap! world/world assoc :zones [])
+  :cleared)
+
+(defn zones
+  "The stockpile zones in the live world."
+  []
+  (zone/zones @world/world))
 
 (defn claims
   "Print the live reservations: each claimed target id -> its claimant pawn id.

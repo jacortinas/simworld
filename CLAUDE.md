@@ -146,6 +146,17 @@ namespaces (the directory rename happened early — never use `colony.*`).
 - **Player override pattern.** Player commands set `:priority :forced
   :source :player` on the job (the `job/forced-by-player` override). Auto-
   assignment later will check these.
+- **Placement mode (reusable drag-rectangle).** `sim.ui-state/:mode`
+  (`:select` default | `:zone-stockpile`) gates input: in zoning mode a left-DRAG
+  paints a rectangle (`Z` enters, `Esc`/right-click cancels). The in-progress
+  rect lives in ui-state `:drag` (a preview — VIEW state, never saved); the
+  committed result is a stockpile zone in the WORLD (`:zones`, saved). Same
+  world-vs-view split as `:selected`/`:hover`. The drag/commit core is
+  payload-agnostic — `sim.zone/cells-in-rect` + the mode machinery are what a
+  future building-placement tool reuses; only the "what to create" differs
+  (`sim.zone/add-stockpile` filters to in-bounds/passable/unzoned cells). Pure
+  model + geometry are headless-tested; the input-proxy drag and the GL fill are
+  the untested edges. See `docs/superpowers/specs/2026-05-25-stockpile-zoning-design.md`.
 - **Selection is broader than commands.** `:selected` holds ANY selectable
   entity id (pawn/item/tree), set by left-click cycle-select. But verbs are
   kind-gated: `right-click!` only orders pawns — a non-pawn selection is
@@ -347,6 +358,12 @@ old compiled loop body until `start!` respawns it.
 - `src/sim/reservation.clj` — PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
   stored state, release is automatic. Depends only on `sim.entity`.
+- `src/sim/zone.clj` — PURE stockpile-zone model + rectangle geometry
+  (`cells-in-rect`, `add-stockpile`, `stockpile-cells`, `cell-zoned?`). `:zones`
+  is plain saved world state. The drag-rect core is reusable for future
+  placement (buildings).
+- `src/sim/render/layers/zones.clj` — stockpile floor overlay + live drag
+  preview (pure rect geometry + untested GL fill); composed just above terrain.
 - `src/sim/think.clj` — the DATA think-tree + pure walker (`deliberate`) +
   pred/giver registries + `default-tree`. Idle behavior selection lives here.
 - `src/sim/ai.clj` — `advance-job` (job execution, every tick) + `redeliberate`

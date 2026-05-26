@@ -9,10 +9,12 @@
 
    RimWorld mapping:
      left-click   → UI hit-test first; if nothing caught it, select a pawn
-     right-click  → order  (sim.command/right-click!)
+                    (in zoning mode: left-DRAG paints a stockpile rectangle)
+     right-click  → order (sim.command/right-click!); in zoning mode: cancel mode
      middle-drag  → pan
      wheel        → zoom
      space        → toggle pause
+     Z            → enter stockpile zoning mode; Esc → back to select
      mouse-move   → record hovered tile (sim.ui-state/set-hover!)
 
    UI-eats-the-click: on-screen widgets (the pause button) live in fixed
@@ -81,8 +83,10 @@
           ;; space → pause is INJECTED (on-toggle-pause) to keep this ns from
           ;; importing sim.clock. The debug toggle is called DIRECTLY because
           ;; we already depend on sim.ui-state (zoom/pan) — no new coupling.
-          Input$Keys/SPACE (do (when on-toggle-pause (on-toggle-pause)) true)
-          Input$Keys/GRAVE (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
+          Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
+          Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
+          Input$Keys/Z      (do (ui/set-mode! :zone-stockpile) true) ; enter zoning
+          Input$Keys/ESCAPE (do (ui/set-mode! :select) (ui/clear-drag!) true) ; exit
           false))
 
       (touchDown [screen-x screen-y _pointer button]
@@ -95,23 +99,51 @@
             (let [height  (long (:height (:grid (world-fn))))
                   [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
               (condp = (int button)
-                Input$Buttons/LEFT  (command/left-click!  tx ty)
-                Input$Buttons/RIGHT (command/right-click! tx ty)
+                ;; In zoning mode left starts a drag-rectangle and right cancels
+                ;; the mode; otherwise the usual select / order commands.
+                Input$Buttons/LEFT
+                (if (= (ui/mode) :zone-stockpile)
+                  (ui/set-drag! {:start [tx ty] :current [tx ty]})
+                  (command/left-click! tx ty))
+
+                Input$Buttons/RIGHT
+                (if (= (ui/mode) :zone-stockpile)
+                  (do (ui/set-mode! :select) (ui/clear-drag!))
+                  (command/right-click! tx ty))
+
                 nil))
             true)))
 
       (touchDragged [screen-x screen-y _pointer]
         (when-let [{:keys [button x y]} @drag]
-          (when (= (int button) Input$Buttons/MIDDLE)
+          (cond
+            (= (int button) Input$Buttons/MIDDLE)
             (let [zoom (double (:zoom (ui/camera)))
                   dx   (- (long screen-x) (long x))
                   dy   (- (long screen-y) (long y))]
               ;; grab-and-drag: world follows cursor → camera moves opposite.
               ;; screen Y is down, world Y up → dy not negated.
-              (ui/pan! (* (- dx) zoom) (* dy zoom))))
+              (ui/pan! (* (- dx) zoom) (* dy zoom)))
+
+            ;; Left-drag in zoning mode grows the preview rectangle to the
+            ;; current tile (commit happens on touchUp).
+            (and (= (int button) Input$Buttons/LEFT) (= (ui/mode) :zone-stockpile))
+            (let [height  (long (:height (:grid (world-fn))))
+                  [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
+              (when-let [d (ui/drag)]
+                (ui/set-drag! (assoc d :current [tx ty])))))
           (swap! drag assoc :x screen-x :y screen-y))
         true)
 
       (touchUp [_screen-x _screen-y _pointer _button]
-        (reset! drag nil)
-        false))))
+        (let [button (:button @drag)]
+          (reset! drag nil)
+          (if (and button
+                   (= (int button) Input$Buttons/LEFT)
+                   (= (ui/mode) :zone-stockpile)
+                   (ui/drag))
+            (let [{:keys [start current]} (ui/drag)]
+              (command/commit-stockpile! start current)
+              (ui/clear-drag!)
+              true)
+            false))))))

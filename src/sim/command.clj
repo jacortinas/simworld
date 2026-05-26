@@ -12,7 +12,8 @@
    [sim.entity   :as entity]
    [sim.inspect  :as inspect]
    [sim.job      :as job]
-   [sim.tile     :as tile]))
+   [sim.tile     :as tile]
+   [sim.zone     :as zone]))
 
 (set! *warn-on-reflection* true)
 
@@ -58,4 +59,13 @@
                  (in-bounds? grid tx ty)
                  (tile/passable? (tile/tile-at grid tx ty)))
         (swap! world/world job/assign sel (job/go-to [tx ty]) job/forced-by-player))))
+  nil)
+
+(defn commit-stockpile!
+  "Commit a dragged rectangle (tile coords `start`..`current`) as a stockpile
+   zone. The world-side of placement mode — sim.input handles the drag, this
+   records the result. add-stockpile filters to in-bounds/passable/unzoned cells
+   and no-ops on an empty result."
+  [start current]
+  (swap! world/world zone/add-stockpile start current)
   nil)

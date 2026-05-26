@@ -106,4 +106,10 @@
     (.setColor font label-color)
     (.draw font batch label label-x btn-ty)
     (.setColor font text-color)
-    (.draw font batch (status-text world) status-x bar-ty)))
+    (.draw font batch (status-text world) status-x bar-ty)
+    ;; Placement-mode banner just above the bar, so the stateful zoning mode is
+    ;; visible (the only feedback besides the live drag preview). ASCII only.
+    (when (= :zone-stockpile (ui/mode))
+      (.setColor font label-color)
+      (.draw font batch "STOCKPILE ZONING  -  drag to place, right-click or Esc to cancel"
+             (float 8) (float (+ bar-h 18))))))
