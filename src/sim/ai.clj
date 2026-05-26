@@ -7,7 +7,7 @@
   (:require
    [sim.entity :as entity]
    [sim.job    :as job]
-   [sim.tile   :as tile]))
+   [sim.think  :as think]))
 
 (set! *warn-on-reflection* true)
 
@@ -19,18 +19,6 @@
   "Stagger pawns by id so they don't all twitch in lockstep."
   [world pawn]
   (zero? (mod (+ (long (:clock world)) (long (:id pawn))) move-period)))
-
-(defn- random-step
-  "Return an updated pawn moved to a random passable adjacent tile
-   (including 'stay put'). Pure: (world, pawn) -> pawn."
-  [world pawn]
-  (let [[x y] (:pos pawn)
-        choices (->> (conj (tile/neighbors-4 (:grid world) x y) [x y])
-                     (filterv (fn [[nx ny]]
-                                (tile/passable? (tile/tile-at (:grid world) nx ny)))))]
-    (if (seq choices)
-      (assoc pawn :pos (rand-nth choices))
-      pawn)))
 
 (defn advance-job
   "Job-execution step for one pawn — runs every tick. Clears a finished job;
@@ -53,9 +41,14 @@
     :else world))
 
 (defn redeliberate
-  "Idle-pawn behavior (currently random wander). The CALLER sub-throttles this
-   to the rare band; this fn just acts. Pure: (world, pawn) -> world."
+  "Idle-pawn deliberation: walk the think-tree (sim.think) to pick a behavior,
+   then assign the resulting job through the one chokepoint. The assignment is
+   AUTO (not forced), so the reservation gate applies — a pawn won't be handed a
+   target another pawn already claims. No job yielded -> the pawn stays idle this
+   pass. The CALLER sub-throttles this to the rare band. Pure: (world,pawn)->world."
   [world pawn]
   (if (:job pawn)
     world
-    (entity/update-entity world (:id pawn) #(random-step world %))))
+    (if-let [job (think/deliberate world pawn)]
+      (job/assign world (:id pawn) job)
+      world)))

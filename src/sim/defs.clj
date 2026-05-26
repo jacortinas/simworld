@@ -29,11 +29,12 @@
 (s/def ::move-cost (s/and number? pos?))
 (s/def ::passable? boolean?)
 (s/def ::weight    (s/and number? pos?))
-(s/def ::decay     (s/and number? #(<= 0.0 (double %) 1.0)))
+(s/def ::decay      (s/and number? #(<= 0.0 (double %) 1.0)))
+(s/def ::seek-below (s/and number? #(<= 0.0 (double %) 1.0)))
 
 (s/def ::terrain-entry  (s/keys :req-un [::move-cost ::passable?] :opt-un [::char]))
 (s/def ::material-entry (s/keys :opt-un [::weight ::char]))
-(s/def ::need-entry     (s/keys :req-un [::decay]))
+(s/def ::need-entry     (s/keys :req-un [::decay] :opt-un [::seek-below]))
 
 (def ^:private entry-spec
   "Category -> the spec each of its entries must satisfy."

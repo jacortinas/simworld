@@ -126,7 +126,20 @@ namespaces (the directory rename happened early — never use `colony.*`).
   re-register idempotently.
 - **Job-as-data with multimethod dispatch.** `(defmulti job/advance ...)`,
   dispatch on `(:type job)`. New job types are pure `defmethod` adds —
-  zero touches elsewhere.
+  zero touches elsewhere. Job types so far: `:go-to`, `:haul`, `:eat`.
+- **AI is a DATA think-tree, not a cond.** `sim.think` holds a priority tree
+  (`default-tree`) walked depth-first, first valid leaf wins (RimWorld's
+  `ThinkNode_Priority`). Nodes reference predicates/job-givers by KEYWORD,
+  resolved via the `preds`/`givers` registries — so the tree is inert data
+  (EDN-ready, moddable later) while behavior lives in code. `deliberate` is pure
+  `(world,pawn) -> job-or-nil`; `sim.ai/redeliberate` routes the job through
+  `sim.job/assign` (AUTO, so the reservation gate applies). Adding a behavior =
+  add a node + register one giver; the walker never changes. Current leaves: eat
+  (hungry pawn → nearest reservable food → consume, refill `:food` to 1.0) and
+  wander (go-to a random nearby cell). The hunger threshold is content
+  (`needs.edn :food :seek-below`). NOT yet built: a constant/reflex tree for
+  mid-job interrupts, and `PrioritySorter` (float-ranked children). See
+  `docs/superpowers/specs/2026-05-25-think-tree-eat-design.md`.
 - **`advance` returns a *world*, not a pawn.** Pickup/drop need to touch
   both the pawn AND the item; returning a world makes that natural. Don't
   revert this — every job since haul depends on it.
@@ -279,8 +292,11 @@ old compiled loop body until `start!` respawns it.
   until libGDX layers are in place.
 - **Job action abstraction.** Haul defmethod is verbose because every
   branch threads through `entity/update-entity`. A `[updated-pawn
-  mutations]` shape might emerge once we have a 3rd job type (mining or
-  building). Don't refactor early.
+  mutations]` shape might emerge once we have a 3rd job type. UPDATE: `:eat`
+  (the 3rd type) landed and reused the existing helpers (`walk-toward`,
+  `next-phase`, `mark-state`, `set-job`) cleanly — no refactor needed for
+  walk-to-target-then-act jobs. The question stays open for a genuinely
+  different shape (mining = modify terrain; building = create an entity).
 - **Path caching vs. replanning.** A `:go-to` path is computed once and followed
   via `:path-index`. It's primed eagerly at assignment (`job/assign` →
   `prime-path`) so the route lives in world state immediately — the overlay
@@ -331,8 +347,11 @@ old compiled loop body until `start!` respawns it.
 - `src/sim/reservation.clj` — PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
   stored state, release is automatic. Depends only on `sim.entity`.
+- `src/sim/think.clj` — the DATA think-tree + pure walker (`deliberate`) +
+  pred/giver registries + `default-tree`. Idle behavior selection lives here.
 - `src/sim/ai.clj` — `advance-job` (job execution, every tick) + `redeliberate`
-  (idle choice, rare-throttled by the caller)
+  (idle choice: walks `sim.think` then `job/assign`s the result; rare-throttled
+  by the caller)
 - `src/sim/log.clj` — debug log helpers (append/recent/of-type/for-pawn)
 - `src/sim/inspect.clj` — PURE tile inspection: `describe-tile` (concept-line
   strings), `selectable-at` (entities on a tile, sorted by id). Headless-tested.

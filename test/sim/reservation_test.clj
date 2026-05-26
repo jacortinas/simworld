@@ -26,6 +26,8 @@
 (deftest reserved-targets-by-job-type
   (testing "a haul job claims its item id"
     (is (= [7] (rsv/reserved-targets (job/haul 7 [3 3])))))
+  (testing "an eat job claims its food item id"
+    (is (= [9] (rsv/reserved-targets (job/eat 9)))))
   (testing "a go-to job claims nothing (cell targets are out of scope)"
     (is (nil? (seq (rsv/reserved-targets (job/go-to [3 3])))))))
 

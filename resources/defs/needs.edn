@@ -2,6 +2,8 @@
 ;; :decay is the amount a need drops per rare tick (~4.2 s @30 Hz). All three
 ;; share the old uniform 0.0125 rate so decay is unchanged; per-need rates are
 ;; now a data edit away. (0.0125 = old per-tick 0.0001 x rare interval 125.)
-{:food       {:decay 0.0125}
+;; :seek-below is the threshold under which a pawn will act to satisfy the need
+;; (food: go eat). Only food drives a behavior so far.
+{:food       {:decay 0.0125 :seek-below 0.3}
  :rest       {:decay 0.0125}
  :recreation {:decay 0.0125}}

@@ -47,6 +47,19 @@
    :path        nil
    :path-index  0})
 
+(defn eat
+  "A job that walks the pawn to food item `food-id` and consumes it, refilling
+   the pawn's :food need. Uses :item-id (like haul) so reservations cover it."
+  [food-id]
+  {:type       :eat
+   :state      :pending
+   :priority   :normal
+   :source     :auto-assigned
+   :item-id    food-id
+   :phase      :go-to-food    ; :go-to-food | :consume
+   :path       nil
+   :path-index 0})
+
 ;; ---------------------------------------------------------------------------
 ;; Assignment — the ONE path every job assignment routes through (player
 ;; click, REPL helper, future auto-assignment), so the set-job + log side
@@ -277,3 +290,36 @@
                            :material (:material item)
                            :at       drop-pos})
               (mark-state pid :complete)))))))
+
+(defmethod advance :eat
+  [world pawn]
+  (let [job     (:job pawn)
+        pid     (:id pawn)
+        food-id (:item-id job)
+        food    (entity/entity world food-id)]
+    (cond
+      (done? job)  world
+
+      ;; Food eaten/despawned by someone else, or carried off the ground — fail.
+      (or (nil? food) (nil? (:pos food)))
+      (mark-state world pid :failed)
+
+      :else
+      (case (:phase job)
+        :go-to-food
+        (let [[result world'] (walk-toward world pawn (:pos food))]
+          (case result
+            :arrived (next-phase world' pid :consume)
+            :failed  (mark-state world' pid :failed)
+            :walking (set-job world' pid assoc :state :in-progress)))
+
+        :consume
+        (-> world
+            (entity/update-entity pid (fn [p] (assoc-in p [:needs :food] 1.0)))
+            (entity/remove-entity food-id)
+            (log/append {:type     :job/eat
+                         :pawn     pid
+                         :item     food-id
+                         :material (:material food)
+                         :at       (:pos food)})
+            (mark-state pid :complete))))))

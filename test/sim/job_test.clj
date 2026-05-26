@@ -243,3 +243,47 @@
       (is (= 1 (count (filter job/failed?   [ja jb]))) "exactly one haul fails")
       (is (= dest (:pos item))    "item delivered once, at the destination")
       (is (nil? (:carried-by item)) "item is free at the end"))))
+
+;; ---------------------------------------------------------------------------
+;; Eat — a hungry pawn walks to a food item and consumes it, refilling :food.
+;; ---------------------------------------------------------------------------
+
+(defn- setup-food
+  "12x12 world, a hungry pawn (food need 0.1) at pawn-pos, a :food item at
+   food-pos. Returns [world pawn-id food-id]."
+  [pawn-pos food-pos]
+  (let [w    (world/initial-world {:width 12 :height 12})
+        pawn (assoc (entity/make-pawn "eater" pawn-pos) :needs {:food 0.1})
+        food (entity/make-item :food food-pos)]
+    [(-> w (entity/add-entity pawn) (entity/add-entity food))
+     (:id pawn) (:id food)]))
+
+(deftest eat-happy-path
+  (let [[w0 pid fid] (setup-food [0 0] [3 0])
+        w1   (entity/update-entity w0 pid assoc :job (job/eat fid))
+        wf   (drive w1 pid 200)
+        pawn (entity/entity wf pid)]
+    (is (job/complete? (:job pawn))          "eat job completes")
+    (is (= 1.0 (get-in pawn [:needs :food])) "food need refilled to full")
+    (is (nil? (entity/entity wf fid))        "the food item is consumed (removed)")
+    (is (seq (log/of-type wf :job/eat))      "eating was logged")))
+
+(deftest eat-consume-phase
+  (testing "standing on the food, :consume removes it and refills the need"
+    (let [[w0 pid fid] (setup-food [3 0] [3 0])
+          w1   (entity/update-entity w0 pid assoc :job
+                                     (assoc (job/eat fid) :phase :consume))
+          w2   (job/advance w1 (entity/entity w1 pid))
+          pawn (entity/entity w2 pid)]
+      (is (job/complete? (:job pawn))          "job completes on consume")
+      (is (= 1.0 (get-in pawn [:needs :food])) "need refilled")
+      (is (nil? (entity/entity w2 fid))        "food removed from the world"))))
+
+(deftest eat-fails-when-food-disappears
+  (testing "food removed mid-eat fails the job rather than NPEing"
+    (let [[w0 pid fid] (setup-food [0 0] [3 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/eat fid))
+          w2   (entity/remove-entity w1 fid)
+          w3   (job/advance w2 (entity/entity w2 pid))]
+      (is (job/failed? (:job (entity/entity w3 pid))))
+      (is (seq (log/of-type w3 :job/failed)) "failure was logged"))))
