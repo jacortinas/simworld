@@ -21,22 +21,19 @@
    from sim.ui-state (plain data) — the Java camera is a derived view."
   (:refer-clojure :exclude [run!])      ; our run! shadows clojure.core/run! (unused here)
   (:require
-   [sim.world :as world]
-   [sim.ui-state :as ui]
-   [sim.input :as input]
-   [sim.clock :as clock]
-   [sim.ui.hud :as hud]
-   [sim.render.sprites :as sprites]
-   [sim.render.layers.terrain :as terrain]
-   [sim.render.layers.flora   :as flora-layer]
-   [sim.render.layers.items   :as items-layer]
-   [sim.render.layers.pawns   :as pawns-layer]
-   [sim.render.layers.debug   :as debug-layer])
+   [sim.app]           ; loaded so we can use fully-qualified sim.app/* in render
+   [sim.clock         :as clock]
+   [sim.screens]       ; loaded so we can use sim.screens/draw-screen fully-qualified
+   [sim.screens.play]                    ; side-effect: register :play defmethod
+   [sim.ui-state      :as ui]
+   [sim.ui.hud        :as hud]
+   [sim.world         :as world]
+   [sim.render.sprites :as sprites])
   (:import
    (com.badlogic.gdx ApplicationAdapter Gdx Input$Keys)
    (com.badlogic.gdx.backends.lwjgl3
     Lwjgl3Application Lwjgl3ApplicationConfiguration)
-   (com.badlogic.gdx.graphics GL20 Color OrthographicCamera Texture)
+   (com.badlogic.gdx.graphics GL20 OrthographicCamera Texture)
    (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont)))
 
 (set! *warn-on-reflection* true)
@@ -97,55 +94,35 @@
               cx   (/ (* (long (:width grid))  tile-size) 2.0)
               cy   (/ (* (long (:height grid)) tile-size) 2.0)]
           (ui/center-camera! cx cy))
-        ;; Route mouse + key events into ui-state, commands, and the loop.
-        ;; on-ui-click lets the HUD eat clicks before they become world
-        ;; commands; on-toggle-pause wires the space key to the sim loop.
-        (.setInputProcessor (Gdx/input)
-                            (input/make-processor
-                             {:camera-fn       (fn [] @world-cam)
-                              :tile-size       tile-size
-                              :world-fn        (fn [] @world-atom)
-                              ;; Wrap in lambdas that re-resolve the var on
-                              ;; every call. A bare `hud/click!` captures the
-                              ;; fn value once at create-time, so reloading
-                              ;; sim.ui.hud wouldn't reach the live window.
-                              :on-ui-click     (fn [x y] (hud/click! x y))
-                              :on-toggle-pause (fn [] (clock/toggle-pause!))})))
+        ;; Build the :play input processor and register it in sim.app/processors.
+        ;; Later tasks add :main-menu, :worldgen, :pause-menu processors. For now,
+        ;; :play is the only one, and we set it as the initial active processor.
+        (let [play-proc (sim.screens.play/make-processor
+                         {:camera-fn (fn [] @world-cam)
+                          :tile-size tile-size
+                          :world-fn  (fn [] @world-atom)})]
+          (swap! sim.app/processors assoc :play play-proc)
+          (.setInputProcessor (Gdx/input) play-proc)))
 
       (render []
         (poll-camera-keys!)
-        (let [^SpriteBatch       b    @batch
-              ^BitmapFont        f    @font
-              ^Texture           px   @pixel
+        (let [^SpriteBatch        b   @batch
+              ^BitmapFont         f   @font
+              ^Texture            px  @pixel
               ^OrthographicCamera wc  @world-cam
               ^OrthographicCamera uc  @ui-cam
-              w        @world-atom
-              cam      (ui/camera)]
+              w   @world-atom
+              ctx {:batch     b
+                   :font      f
+                   :pixel     px
+                   :world-cam wc
+                   :ui-cam    uc
+                   :tile-size tile-size
+                   :world     w
+                   :app       @sim.app/app}]
           (.glClearColor (Gdx/gl) 0.05 0.05 0.08 1.0)
           (.glClear      (Gdx/gl) GL20/GL_COLOR_BUFFER_BIT)
-
-          ;; --- Sync the world camera from ui-state data, then draw world ---
-          (.set (.position wc) (float (:x cam)) (float (:y cam)) (float 0.0))
-          (set! (.zoom wc) (float (:zoom cam)))
-          (.update wc)
-          (.setProjectionMatrix b (.combined wc))
-          (.begin b)
-          (.setColor b Color/WHITE)            ; sprites draw untinted
-          (terrain/draw     w b tile-size)
-          (flora-layer/draw w b tile-size)
-          (items-layer/draw w b tile-size)
-          (pawns-layer/draw w b tile-size (ui/selected))
-          ;; Debug overlay draws LAST in the world block so paths sit on top of
-          ;; everything; it self-gates on (ui/debug?) and reuses the HUD's 1px
-          ;; texture (px) for its solid-rect segments.
-          (debug-layer/draw w b tile-size px)
-          (.end b)
-
-          ;; --- Fixed UI camera: HUD that ignores pan/zoom ---
-          (.setProjectionMatrix b (.combined uc))
-          (.begin b)
-          (hud/draw b f px w)
-          (.end b)))
+          (sim.screens/draw-screen (sim.app/current-screen) ctx)))
 
       (resize [w h]
         (.setToOrtho ^OrthographicCamera @world-cam false (double w) (double h))

@@ -47,17 +47,18 @@
 
 (defn make-processor
   "Build the InputProcessor from an opts map:
-     :camera-fn       -> live world OrthographicCamera (to unproject clicks)
-     :tile-size       -> tile pixel size
-     :world-fn        -> current world value (for grid height)
-     :on-ui-click     -> (fn [sx sy] -> consumed?) offered every left click
-                         BEFORE it becomes a world command
-     :on-toggle-pause -> (fn []) invoked on the space key
+     :camera-fn            -> live world OrthographicCamera (to unproject clicks)
+     :tile-size            -> tile pixel size
+     :world-fn             -> current world value (for grid height)
+     :on-ui-click          -> (fn [sx sy] -> consumed?) offered every left click
+                              BEFORE it becomes a world command
+     :on-toggle-pause      -> (fn []) invoked on the space key
+     :on-open-pause-menu   -> (fn []) invoked on the Escape key (optional)
 
-   on-ui-click / on-toggle-pause are injected (rather than required) so this
-   namespace stays decoupled from the HUD and the game loop — easy to test
-   with stub fns."
-  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause]}]
+   on-ui-click / on-toggle-pause / on-open-pause-menu are injected (rather
+   than required) so this namespace stays decoupled from the HUD and the game
+   loop — easy to test with stub fns."
+  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause on-open-pause-menu]}]
   (let [drag (atom nil)]            ; {:button b :x sx :y sy}
     (proxy [InputAdapter] []
       (scrolled [_amount-x amount-y]
@@ -69,8 +70,9 @@
           ;; space → pause is INJECTED (on-toggle-pause) to keep this ns from
           ;; importing sim.clock. The debug toggle is called DIRECTLY because
           ;; we already depend on sim.ui-state (zoom/pan) — no new coupling.
-          Input$Keys/SPACE (do (when on-toggle-pause (on-toggle-pause)) true)
-          Input$Keys/GRAVE (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
+          Input$Keys/SPACE  (do (when on-toggle-pause   (on-toggle-pause))   true)
+          Input$Keys/GRAVE  (do (ui/toggle-debug!) true)              ; ` : debug overlay
+          Input$Keys/ESCAPE (do (when on-open-pause-menu (on-open-pause-menu)) true)
           false))
 
       (touchDown [screen-x screen-y _pointer button]
