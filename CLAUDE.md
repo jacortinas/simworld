@@ -144,6 +144,23 @@ namespaces (the directory rename happened early — never use `colony.*`).
   Player clicks, REPL helpers, and future auto-assignment all call it, so the
   set-job/log side effects can't drift between callers. The log entry is
   derived from the job map, so new job types log for free.
+- **Reservations are a DERIVED query, not stored state.** `sim.reservation`
+  answers "who claims target X" purely from the pawns' active jobs — each job
+  encodes its target (`reserved-targets`: `:haul` → `[item-id]`; `:go-to` →
+  nothing). `claimant` returns the LOWEST-id active claimer (deterministic —
+  `vals` order is unspecified); `can-reserve?` is true if unclaimed or self.
+  **Release is a non-event:** a cleared job's claim just vanishes, so there is no
+  release fn to call and no "phantom reservation" bug class. Two enforcement
+  points: (1) `sim.job/assign` refuses an AUTO (non-forced) job whose target is
+  claimed by another pawn (logs `:job/blocked`); forced player orders override
+  (player is boss). (2) the haul `:pickup` phase guards on `can-reserve?` so a
+  same-tick race can't double-grab. Invariant — **reserve what you'll write**:
+  one-claimant-per-target makes pawn writes disjoint, which is the precondition
+  for parallelizing job execution later (the runtime stand-in for ECS archetype
+  write-analysis). The future parallel-assignment path is propose→reconcile over
+  `claimant`, NOT lock-based CAS (which would be non-deterministic). `sim.reservation`
+  depends only on `sim.entity` (it interprets jobs but never requires `sim.job`,
+  keeping the graph acyclic). See `docs/superpowers/specs/2026-05-25-reservations-design.md`.
 - **Render layers are pure projections.** A layer = `(draw world batch)`.
   Compositor walks them in order. Z-order replaces ASCII precedence as
   the "what shows on top" mechanic.
@@ -311,6 +328,9 @@ old compiled loop body until `start!` respawns it.
   `start!`/`stop!` (liveness), `pause!`/`resume!`/`toggle-pause!` (sim-time)
 - `src/sim/job.clj` — defmulti `advance`, haul phases, `walk-toward`, `assign`
   (+ `prime-path`: eager go-to pathing at assign time)
+- `src/sim/reservation.clj` — PURE derived reservation queries
+  (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
+  stored state, release is automatic. Depends only on `sim.entity`.
 - `src/sim/ai.clj` — `advance-job` (job execution, every tick) + `redeliberate`
   (idle choice, rare-throttled by the caller)
 - `src/sim/log.clj` — debug log helpers (append/recent/of-type/for-pawn)

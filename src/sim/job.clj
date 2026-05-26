@@ -14,7 +14,8 @@
   (:require
    [sim.entity      :as entity]
    [sim.log         :as log]
-   [sim.pathfinding :as pathfinding]))
+   [sim.pathfinding :as pathfinding]
+   [sim.reservation :as reservation]))
 
 (set! *warn-on-reflection* true)
 
@@ -96,14 +97,28 @@
    world -> world. `overrides` (optional) is merged onto the job — pass
    `forced-by-player` for player orders. A :go-to job's A* path is primed here
    (see `prime-path`) so the route shows immediately, even paused. Every
-   assignment goes through here."
+   assignment goes through here.
+
+   Reservation gate: an AUTO (non-forced) job whose reserved targets are already
+   claimed by another pawn is refused — logged as :job/blocked, world otherwise
+   unchanged. Forced player orders override (player is boss). go-to reserves
+   nothing, so it is never blocked. See sim.reservation."
   ([world pawn-id job] (assign world pawn-id job nil))
   ([world pawn-id job overrides]
-   (let [job (merge job overrides)]
-     (-> world
-         (entity/update-entity pawn-id assoc :job job)
-         (prime-path pawn-id)
-         (log/append (assigned-entry pawn-id job))))))
+   (let [job     (merge job overrides)
+         forced? (= :forced (:priority job))
+         blocked (when-not forced?
+                   (seq (remove #(reservation/can-reserve? world % pawn-id)
+                                (reservation/reserved-targets job))))]
+     (if blocked
+       (log/append world {:type     :job/blocked
+                          :pawn     pawn-id
+                          :job      (:type job)
+                          :reserved (vec blocked)})
+       (-> world
+           (entity/update-entity pawn-id assoc :job job)
+           (prime-path pawn-id)
+           (log/append (assigned-entry pawn-id job)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; State predicates
@@ -221,18 +236,25 @@
               :walking (set-job world' pid assoc :state :in-progress))))
 
         :pickup
-        (-> world
-            (entity/update-entity pid       assoc :carrying item-id)
-            (entity/update-entity item-id   (fn [it]
-                                              (-> it
-                                                  (assoc :carried-by pid)
-                                                  (assoc :pos nil))))
-            (log/append {:type     :job/pickup
-                         :pawn     pid
-                         :item     item-id
-                         :material (:material item)
-                         :at       (:pos item)})
-            (next-phase pid :go-to-dest))
+        ;; Reservation guard: if another pawn holds the claim (the same-tick
+        ;; race where two pawns reach :pickup together), this one loses and
+        ;; fails rather than double-grabbing. The lone hauler is its own
+        ;; claimant, so the normal path is unaffected. This is the execution-time
+        ;; half of "reserve what you'll write" — it makes pawn writes disjoint.
+        (if-not (reservation/can-reserve? world item-id pid)
+          (mark-state world pid :failed)
+          (-> world
+              (entity/update-entity pid       assoc :carrying item-id)
+              (entity/update-entity item-id   (fn [it]
+                                                (-> it
+                                                    (assoc :carried-by pid)
+                                                    (assoc :pos nil))))
+              (log/append {:type     :job/pickup
+                           :pawn     pid
+                           :item     item-id
+                           :material (:material item)
+                           :at       (:pos item)})
+              (next-phase pid :go-to-dest)))
 
         :go-to-dest
         (let [[result world'] (walk-toward world pawn (:destination job))]

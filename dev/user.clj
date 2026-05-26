@@ -12,6 +12,7 @@
    [sim.world     :as world]
    [sim.clock :as clock]
    [sim.defs      :as defs]
+   [sim.reservation :as reservation]
    [sim.simulation :as simulation]
    [sim.pathfinding :as pathfinding]
    [sim.render    :as render]
@@ -221,6 +222,21 @@
   [pawn-id item-id destination]
   (swap! world/world job/assign pawn-id (job/haul item-id destination) job/forced-by-player)
   :assigned)
+
+(defn claims
+  "Print the live reservations: each claimed target id -> its claimant pawn id.
+   Derived on the fly from pawns' active jobs (sim.reservation) — nothing is
+   stored, so this is always current."
+  []
+  (let [w       @world/world
+        targets (->> (entity/pawns w)
+                     (mapcat (comp reservation/reserved-targets :job))
+                     distinct)]
+    (if (empty? targets)
+      (println "no active claims")
+      (doseq [t targets]
+        (println t "->" (reservation/claimant w t)))))
+  nil)
 
 ;; ---------------------------------------------------------------------------
 ;; Debug log access.

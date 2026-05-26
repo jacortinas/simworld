@@ -175,3 +175,71 @@
           w1 (job/assign w0 pid (job/haul iid [6 0]) job/forced-by-player)]
       (is (nil? (get-in (entity/entity w1 pid) [:job :path]))
           "haul :path remains nil at assign time"))))
+
+;; ---------------------------------------------------------------------------
+;; Reservations — assign refuses an AUTO claim of a target another pawn already
+;; holds (forced player orders override); the haul :pickup phase guards against
+;; the same-tick double-grab so a contested item is carried at most once.
+;; ---------------------------------------------------------------------------
+
+(defn- drive-all
+  "Advance every pawn in `pids` one job-step per round, until all are done? or
+   max-steps. Mirrors how advance-jobs-system steps all pawns each tick."
+  [world pids max-steps]
+  (loop [w world n 0]
+    (if (or (>= n max-steps)
+            (every? (fn [pid] (let [j (:job (entity/entity w pid))]
+                                (or (nil? j) (job/done? j))))
+                    pids))
+      w
+      (recur (reduce (fn [w pid]
+                       (let [p (entity/entity w pid)]
+                         (if (and p (:job p) (not (job/done? (:job p))))
+                           (job/advance w p)
+                           w)))
+                     w pids)
+             (inc n)))))
+
+(deftest assign-blocks-auto-claim-of-reserved-target
+  (testing "an auto (non-forced) haul of an item another pawn already hauls is
+            refused: no job set, world logs :job/blocked"
+    (let [[w0 a iid] (setup [0 0] [3 0])
+          b   (entity/make-pawn "b" [1 1])
+          w1  (-> w0
+                  (entity/add-entity b)
+                  (entity/update-entity a assoc :job (job/haul iid [6 0]))) ; a claims iid
+          w2  (job/assign w1 (:id b) (job/haul iid [6 0]))]                 ; auto -> blocked
+      (is (nil? (:job (entity/entity w2 (:id b)))) "b gets no job")
+      (is (seq (log/of-type w2 :job/blocked))      "a :job/blocked entry was logged"))))
+
+(deftest assign-forced-overrides-reservation
+  (testing "a forced player order takes a claimed target anyway (player is boss)"
+    (let [[w0 a iid] (setup [0 0] [3 0])
+          b   (entity/make-pawn "b" [1 1])
+          w1  (-> w0
+                  (entity/add-entity b)
+                  (entity/update-entity a assoc :job (job/haul iid [6 0])))
+          w2  (job/assign w1 (:id b) (job/haul iid [6 0]) job/forced-by-player)]
+      (is (= :haul (get-in (entity/entity w2 (:id b)) [:job :type]))
+          "forced haul is assigned despite the existing claim"))))
+
+(deftest two-haulers-one-item-no-double-grab
+  (testing "two pawns ordered to haul the same item: exactly one carries it to
+            the destination, the other fails — never a double-grab"
+    (let [w0   (world/initial-world {:width 12 :height 12})
+          a    (entity/make-pawn "a" [2 0])
+          b    (entity/make-pawn "b" [4 0])     ; symmetric distance -> same-tick arrival
+          it   (entity/make-item :wood [3 0])
+          dest [6 0]
+          w1   (-> w0
+                   (entity/add-entity a) (entity/add-entity b) (entity/add-entity it)
+                   (entity/update-entity (:id a) assoc :job (job/haul (:id it) dest))
+                   (entity/update-entity (:id b) assoc :job (job/haul (:id it) dest)))
+          wf   (drive-all w1 [(:id a) (:id b)] 100)
+          ja   (:job (entity/entity wf (:id a)))
+          jb   (:job (entity/entity wf (:id b)))
+          item (entity/entity wf (:id it))]
+      (is (= 1 (count (filter job/complete? [ja jb]))) "exactly one haul completes")
+      (is (= 1 (count (filter job/failed?   [ja jb]))) "exactly one haul fails")
+      (is (= dest (:pos item))    "item delivered once, at the destination")
+      (is (nil? (:carried-by item)) "item is free at the end"))))
