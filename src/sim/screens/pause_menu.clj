@@ -88,8 +88,12 @@
       ;; buttons
       (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color resume       "Resume")
       (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color quit-to-menu "Quit to Menu")
-      (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color quit-game    "Quit Game"))
-    (.end batch)))
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color quit-game    "Quit Game")
+      (.end batch)
+      ;; Hover cursor — runs AFTER the (draw-screen :play ctx) composition above,
+      ;; so it overrides whatever the HUD's hover-cursor! set. When the pause
+      ;; modal is open, only the modal's three buttons are clickable.
+      (screens/hover-cursor! [resume quit-to-menu quit-game]))))
 
 (defmethod screens/draw-screen :pause-menu [_ ctx]
   (draw ctx))

@@ -59,8 +59,9 @@
     ;; buttons
     (let [{:keys [new-colony quit]} (button-rects vw vh)]
       (screens/draw-button! batch font pixel btn-border btn-fill btn-label new-colony "New Colony")
-      (screens/draw-button! batch font pixel btn-border btn-fill btn-label quit       "Quit"))
-    (.end batch)))
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label quit       "Quit")
+      (.end batch)
+      (screens/hover-cursor! [new-colony quit]))))
 
 (defmethod screens/draw-screen :main-menu [_ ctx]
   (draw ctx))

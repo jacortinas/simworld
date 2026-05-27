@@ -85,6 +85,11 @@
       nil)         ; :idle is unreachable from this screen, but be safe
     (.end batch)
 
+    ;; Hover cursor — only the Back button is clickable, and only when :failed.
+    (screens/hover-cursor! (if (= status :failed)
+                             [(back-button-rect vw vh)]
+                             []))
+
     ;; Self-driven transition: on the same frame we observe :status :done,
     ;; flip to :play. enter-play! handles seed-colony!, clock/start!, and
     ;; the screen + processor swap.

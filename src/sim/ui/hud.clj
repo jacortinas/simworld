@@ -12,6 +12,7 @@
    as a world command); only the button rect actually toggles pause."
   (:require
    [sim.clock    :as clock]
+   [sim.screens  :as screens]
    [sim.ui-state :as ui])
   (:import
    (com.badlogic.gdx Gdx)
@@ -106,4 +107,7 @@
     (.setColor font label-color)
     (.draw font batch label label-x btn-ty)
     (.setColor font text-color)
-    (.draw font batch (status-text world) status-x bar-ty)))
+    (.draw font batch (status-text world) status-x bar-ty)
+    ;; Hand-cursor on the pause/play button. The pause-menu overrides this when
+    ;; open by calling hover-cursor! AFTER composing :play's draw.
+    (screens/hover-cursor! [[(:x button) (:y button) (:w button) (:h button)]])))

@@ -24,7 +24,8 @@
    than one screen uses: inside? (rect hit-test) and draw-button! (the
    1px-texture button-rendering grammar)."
   (:import
-   (com.badlogic.gdx.graphics Color Texture)
+   (com.badlogic.gdx Gdx)
+   (com.badlogic.gdx.graphics Color Cursor$SystemCursor Texture)
    (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont GlyphLayout)))
 
 (set! *warn-on-reflection* true)
@@ -43,6 +44,27 @@
   [[rx ry rw rh] x y]
   (and (<= (long rx) (long x) (+ (long rx) (long rw)))
        (<= (long ry) (long y) (+ (long ry) (long rh)))))
+
+(defn hovered?
+  "Pure: is UI-cam-space coord (x, y) inside any of `rects`?"
+  [rects x y]
+  (boolean (some #(inside? % x y) rects)))
+
+(defn hover-cursor!
+  "Set the system cursor to Hand if the mouse is over any rect, else Arrow.
+   Reads the current mouse position from libGDX and flips screen-Y-down to
+   UI-cam-Y-up. setSystemCursor is idempotent at the OS level, so calling
+   this every frame is fine. Screens call this near the end of their draw fn
+   with their currently clickable rects."
+  [rects]
+  (let [input  (Gdx/input)
+        vh     (.getHeight (Gdx/graphics))
+        x      (.getX input)
+        y      (- vh (.getY input))
+        cursor (if (hovered? rects x y)
+                 Cursor$SystemCursor/Hand
+                 Cursor$SystemCursor/Arrow)]
+    (.setSystemCursor (Gdx/graphics) cursor)))
 
 (defn draw-button!
   "Draw a 1px-texture button: bordered rect + inset fill + centered label.

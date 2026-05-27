@@ -28,3 +28,11 @@
           (pause-menu/button-rects 800 600)]
       (is (> (second resume)       (second quit-to-menu)))
       (is (> (second quit-to-menu) (second quit-game))))))
+
+(deftest hovered-detects-rect-containment
+  (testing "hovered? returns true when (x, y) is inside any rect, false otherwise"
+    (is (= true  (screens/hovered? [[10 10 50 50]] 30 30)))
+    (is (= true  (screens/hovered? [[10 10 50 50]] 10 10)))     ; on edge counts as inside (per inside?)
+    (is (= false (screens/hovered? [[10 10 50 50]] 100 100)))
+    (is (= true  (screens/hovered? [[10 10 50 50] [100 100 50 50]] 110 110)))
+    (is (= false (screens/hovered? [] 30 30)))))
