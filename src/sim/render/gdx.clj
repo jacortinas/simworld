@@ -26,6 +26,7 @@
    [sim.screens]       ; loaded so we can use sim.screens/draw-screen fully-qualified
    [sim.screens.play]                    ; side-effect: register :play defmethod
    [sim.screens.main-menu]              ; side-effect: register :main-menu defmethod
+   [sim.screens.pause-menu]             ; side-effect: register :pause-menu defmethod
    [sim.screens.worldgen]               ; side-effect: register :worldgen defmethod
    [sim.ui-state      :as ui]
    [sim.ui.hud        :as hud]
@@ -107,6 +108,8 @@
         (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor))
         ;; Worldgen processor — active only while :worldgen screen is showing.
         (swap! sim.app/processors assoc :worldgen (sim.screens.worldgen/make-processor))
+        ;; Pause-menu processor — modal overlay over the frozen play view.
+        (swap! sim.app/processors assoc :pause-menu (sim.screens.pause-menu/make-processor))
         ;; Initial active processor: :main-menu (the app boots there per sim.app/initial-app).
         ;; All four processors are registered in sim.app/processors above; the screen
         ;; transition fns swap them via setInputProcessor when :screen changes.

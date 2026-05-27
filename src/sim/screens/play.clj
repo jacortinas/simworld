@@ -6,6 +6,7 @@
    make-processor wraps sim.input/make-processor with one extra injected
    callback: :on-open-pause-menu (Esc → app/enter-pause-menu!)."
   (:require
+   [sim.app                    :as app]
    [sim.clock                  :as clock]
    [sim.input                  :as input]
    [sim.screens                :as screens]
@@ -61,15 +62,13 @@
 
 (defn make-processor
   "Build the InputProcessor for the :play screen. Wraps
-   sim.input/make-processor with the existing two injected callbacks.
-
-   The :on-open-pause-menu binding (Esc → app/enter-pause-menu!) is added
-   in the pause-menu task — once the :pause-menu draw-screen defmethod
-   exists. Until then, Esc in :play is a no-op."
+   sim.input/make-processor with the existing two injected callbacks, plus
+   on-open-pause-menu for the Esc key."
   [{:keys [camera-fn tile-size world-fn]}]
   (input/make-processor
-   {:camera-fn       camera-fn
-    :tile-size       tile-size
-    :world-fn        world-fn
-    :on-ui-click     (fn [x y] (hud/click! x y))
-    :on-toggle-pause (fn [] (clock/toggle-pause!))}))
+   {:camera-fn          camera-fn
+    :tile-size          tile-size
+    :world-fn           world-fn
+    :on-ui-click        (fn [x y] (hud/click! x y))
+    :on-toggle-pause    (fn [] (clock/toggle-pause!))
+    :on-open-pause-menu (fn [] (app/enter-pause-menu!))}))
