@@ -21,25 +21,22 @@
    from sim.ui-state (plain data) — the Java camera is a derived view."
   (:refer-clojure :exclude [run!])      ; our run! shadows clojure.core/run! (unused here)
   (:require
-   [sim.world :as world]
-   [sim.ui-state :as ui]
-   [sim.input :as input]
-   [sim.clock :as clock]
-   [sim.ui.hud :as hud]
-   [sim.ui.inspect-panel :as inspect-panel]
-   [sim.render.sprites :as sprites]
-   [sim.render.layers.terrain :as terrain]
-   [sim.render.layers.zones   :as zones-layer]
-   [sim.render.layers.flora   :as flora-layer]
-   [sim.render.layers.items   :as items-layer]
-   [sim.render.layers.pawns   :as pawns-layer]
-   [sim.render.layers.debug   :as debug-layer]
-   [sim.render.layers.selection :as selection-layer])
+   [sim.app]           ; loaded so we can use fully-qualified sim.app/* in render
+   [sim.clock         :as clock]
+   [sim.screens]       ; loaded so we can use sim.screens/draw-screen fully-qualified
+   [sim.screens.play]                    ; side-effect: register :play defmethod
+   [sim.screens.main-menu]              ; side-effect: register :main-menu defmethod
+   [sim.screens.pause-menu]             ; side-effect: register :pause-menu defmethod
+   [sim.screens.worldgen]               ; side-effect: register :worldgen defmethod
+   [sim.ui-state      :as ui]
+   [sim.ui.hud        :as hud]
+   [sim.world         :as world]
+   [sim.render.sprites :as sprites])
   (:import
    (com.badlogic.gdx ApplicationAdapter Gdx Input$Keys)
    (com.badlogic.gdx.backends.lwjgl3
     Lwjgl3Application Lwjgl3ApplicationConfiguration)
-   (com.badlogic.gdx.graphics GL20 Color OrthographicCamera Texture)
+   (com.badlogic.gdx.graphics GL20 OrthographicCamera Texture)
    (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont)))
 
 (set! *warn-on-reflection* true)
@@ -100,63 +97,43 @@
               cx   (/ (* (long (:width grid))  tile-size) 2.0)
               cy   (/ (* (long (:height grid)) tile-size) 2.0)]
           (ui/center-camera! cx cy))
-        ;; Route mouse + key events into ui-state, commands, and the loop.
-        ;; on-ui-click lets the HUD eat clicks before they become world
-        ;; commands; on-toggle-pause wires the space key to the sim loop.
-        (.setInputProcessor (Gdx/input)
-                            (input/make-processor
-                             {:camera-fn       (fn [] @world-cam)
-                              :tile-size       tile-size
-                              :world-fn        (fn [] @world-atom)
-                              ;; Wrap in lambdas that re-resolve the var on
-                              ;; every call. A bare `hud/click!` captures the
-                              ;; fn value once at create-time, so reloading
-                              ;; sim.ui.hud wouldn't reach the live window.
-                              :on-ui-click     (fn [x y] (hud/click! x y))
-                              :on-toggle-pause (fn [] (clock/toggle-pause!))})))
+        ;; Build all input processors and register them in sim.app/processors.
+        ;; Screen transition fns swap them via setInputProcessor when :screen changes.
+        (let [play-proc (sim.screens.play/make-processor
+                         {:camera-fn (fn [] @world-cam)
+                          :tile-size tile-size
+                          :world-fn  (fn [] @world-atom)})]
+          (swap! sim.app/processors assoc :play play-proc))
+        ;; Main-menu processor — built once GL exists, registered in app/processors.
+        (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor))
+        ;; Worldgen processor — active only while :worldgen screen is showing.
+        (swap! sim.app/processors assoc :worldgen (sim.screens.worldgen/make-processor))
+        ;; Pause-menu processor — modal overlay over the frozen play view.
+        (swap! sim.app/processors assoc :pause-menu (sim.screens.pause-menu/make-processor))
+        ;; Initial active processor: :main-menu (the app boots there per sim.app/initial-app).
+        ;; All four processors are registered in sim.app/processors above; the screen
+        ;; transition fns swap them via setInputProcessor when :screen changes.
+        (.setInputProcessor (Gdx/input) (get @sim.app/processors :main-menu)))
 
       (render []
         (poll-camera-keys!)
-        (let [^SpriteBatch       b    @batch
-              ^BitmapFont        f    @font
-              ^Texture           px   @pixel
+        (let [^SpriteBatch        b   @batch
+              ^BitmapFont         f   @font
+              ^Texture            px  @pixel
               ^OrthographicCamera wc  @world-cam
               ^OrthographicCamera uc  @ui-cam
-              w        @world-atom
-              cam      (ui/camera)]
+              w   @world-atom
+              ctx {:batch     b
+                   :font      f
+                   :pixel     px
+                   :world-cam wc
+                   :ui-cam    uc
+                   :tile-size tile-size
+                   :world     w
+                   :app       @sim.app/app}]
           (.glClearColor (Gdx/gl) 0.05 0.05 0.08 1.0)
           (.glClear      (Gdx/gl) GL20/GL_COLOR_BUFFER_BIT)
-
-          ;; --- Sync the world camera from ui-state data, then draw world ---
-          (.set (.position wc) (float (:x cam)) (float (:y cam)) (float 0.0))
-          (set! (.zoom wc) (float (:zoom cam)))
-          (.update wc)
-          (.setProjectionMatrix b (.combined wc))
-          (.begin b)
-          (.setColor b Color/WHITE)            ; sprites draw untinted
-          (terrain/draw     w b tile-size)
-          ;; Stockpile-zone floor overlay + live drag preview: above terrain,
-          ;; below flora/items/pawns so stored items show on top of the zone.
-          (zones-layer/draw w b tile-size px)
-          (flora-layer/draw w b tile-size)
-          (items-layer/draw w b tile-size)
-          (pawns-layer/draw w b tile-size)
-          ;; Selection box: world-space marker around the selected entity's
-          ;; tile (any kind), reusing the 1px texture. Before the debug overlay
-          ;; so a debug path still draws on top of the box.
-          (selection-layer/draw w b tile-size px)
-          ;; Debug overlay draws LAST in the world block so paths sit on top of
-          ;; everything; it self-gates on (ui/debug?) and reuses the HUD's 1px
-          ;; texture (px) for its solid-rect segments.
-          (debug-layer/draw w b tile-size px)
-          (.end b)
-
-          ;; --- Fixed UI camera: HUD that ignores pan/zoom ---
-          (.setProjectionMatrix b (.combined uc))
-          (.begin b)
-          (hud/draw b f px w)
-          (inspect-panel/draw b f px w)
-          (.end b)))
+          (sim.screens/draw-screen (sim.app/current-screen) ctx)))
 
       (resize [w h]
         (.setToOrtho ^OrthographicCamera @world-cam false (double w) (double h))

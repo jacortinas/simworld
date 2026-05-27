@@ -15,7 +15,8 @@
      middle-drag  → pan
      wheel        → zoom
      space        → toggle pause
-     Z            → enter stockpile zoning mode; Esc → back to select
+     Z            → enter stockpile zoning mode
+     Esc          → cancel the active zoning tool; else open the pause menu
      mouse-move   → record hovered tile (sim.ui-state/set-hover!)
 
    UI-eats-the-click: on-screen widgets (the pause button) live in fixed
@@ -58,17 +59,18 @@
 
 (defn make-processor
   "Build the InputProcessor from an opts map:
-     :camera-fn       -> live world OrthographicCamera (to unproject clicks)
-     :tile-size       -> tile pixel size
-     :world-fn        -> current world value (for grid height)
-     :on-ui-click     -> (fn [sx sy] -> consumed?) offered every left click
-                         BEFORE it becomes a world command
-     :on-toggle-pause -> (fn []) invoked on the space key
+     :camera-fn            -> live world OrthographicCamera (to unproject clicks)
+     :tile-size            -> tile pixel size
+     :world-fn             -> current world value (for grid height)
+     :on-ui-click          -> (fn [sx sy] -> consumed?) offered every left click
+                              BEFORE it becomes a world command
+     :on-toggle-pause      -> (fn []) invoked on the space key
+     :on-open-pause-menu   -> (fn []) invoked on the Escape key (optional)
 
-   on-ui-click / on-toggle-pause are injected (rather than required) so this
-   namespace stays decoupled from the HUD and the game loop — easy to test
-   with stub fns."
-  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause]}]
+   on-ui-click / on-toggle-pause / on-open-pause-menu are injected (rather
+   than required) so this namespace stays decoupled from the HUD and the game
+   loop — easy to test with stub fns."
+  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause on-open-pause-menu]}]
   (let [drag (atom nil)]            ; {:button b :x sx :y sy}
     (proxy [InputAdapter] []
       (scrolled [_amount-x amount-y]
@@ -94,7 +96,13 @@
           Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
           Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
           Input$Keys/Z      (do (ui/set-mode! :zone-stockpile) true) ; enter zoning
-          Input$Keys/ESCAPE (do (ui/set-mode! :select) (ui/clear-drag!) true) ; exit
+          ;; Escape is context-sensitive: cancel the active zoning tool first;
+          ;; only when no tool is active does it open the pause menu (RimWorld
+          ;; backs out of the current tool before the menu).
+          Input$Keys/ESCAPE (do (if (= (ui/mode) :zone-stockpile)
+                                  (do (ui/set-mode! :select) (ui/clear-drag!))
+                                  (when on-open-pause-menu (on-open-pause-menu)))
+                                true)
           false))
 
       (touchDown [screen-x screen-y _pointer button]

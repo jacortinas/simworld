@@ -12,6 +12,7 @@
    as a world command); only the button rect actually toggles pause."
   (:require
    [sim.clock    :as clock]
+   [sim.screens  :as screens]
    [sim.ui-state :as ui])
   (:import
    (com.badlogic.gdx Gdx)
@@ -112,4 +113,7 @@
     (when (= :zone-stockpile (ui/mode))
       (.setColor font label-color)
       (.draw font batch "STOCKPILE ZONING  -  drag to place, right-click or Esc to cancel"
-             (float 8) (float (+ bar-h 18))))))
+             (float 8) (float (+ bar-h 18))))
+    ;; Hand-cursor on the pause/play button. The pause-menu overrides this when
+    ;; open by calling hover-cursor! AFTER composing :play's draw.
+    (screens/hover-cursor! [[(:x button) (:y button) (:w button) (:h button)]])))

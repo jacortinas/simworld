@@ -87,3 +87,15 @@
           (is (pos? (count (entity/items w)))))
         (finally
           (reset! world/world before))))))
+
+(deftest on-phase-callback-fires-in-order
+  (testing ":on-phase callback invoked once per pipeline phase, in pipeline order"
+    (let [seen (atom [])
+          _    (gen (assoc test-opts :on-phase #(swap! seen conj %)))]
+      (is (= [:terrain :detail] @seen)
+          (str "expected [:terrain :detail], got " @seen)))))
+
+(deftest on-phase-callback-is-optional
+  (testing "generate without :on-phase still works (existing call sites unaffected)"
+    (let [w (gen test-opts)]
+      (is (some? (:grid w))))))

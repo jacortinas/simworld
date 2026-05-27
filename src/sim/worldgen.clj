@@ -56,8 +56,11 @@
 
 (defn base-pass
   "Terrain phase: write the cell grid from noise. Reads/writes only :world's
-   :grid, nothing entity-related."
+   :grid, nothing entity-related. Invokes (:on-phase opts) with :terrain
+   before starting if present — the optional progress hook the screens layer
+   uses for phase-by-phase reporting."
   [state]
+  (when-let [cb (:on-phase (:opts state))] (cb :terrain))
   (assoc-in state [:world :grid]
             (build-terrain-grid (:seed state) (:opts state))))
 
@@ -103,8 +106,10 @@
 (defn scatter-pass
   "Detail phase: read the finished terrain and decorate it. Trees on grass
    (spaced), wood near trees, food on grass, stone on gravel. Derives its own
-   Random so it's independent of any other pass's draws."
+   Random so it's independent of any other pass's draws. Invokes
+   (:on-phase opts) with :detail before starting if present."
   [state]
+  (when-let [cb (:on-phase (:opts state))] (cb :detail))
   (let [world (:world state)
         grid  (:grid world)
         opts  (:opts state)
