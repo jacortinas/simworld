@@ -52,26 +52,6 @@
      :quit-to-menu [x  (- top-y (+ btn-h btn-gap)) btn-w btn-h]
      :quit-game    [x  (- top-y (* 2 (+ btn-h btn-gap))) btn-w btn-h]}))
 
-(defn- inside? [[rx ry rw rh] x y]
-  (and (<= (long rx) (long x) (+ (long rx) (long rw)))
-       (<= (long ry) (long y) (+ (long ry) (long rh)))))
-
-(defn- draw-button!
-  [^SpriteBatch batch ^BitmapFont font ^Texture pixel [x y w h] label]
-  (let [bx (float x) by (float y) bw (float w) bh (float h)
-        ix (float (+ bx 2)) iy (float (+ by 2))
-        iw (float (- bw 4)) ih (float (- bh 4))]
-    (.setColor batch btn-border)
-    (.draw batch pixel bx by bw bh)
-    (.setColor batch btn-fill)
-    (.draw batch pixel ix iy iw ih)
-    (.setColor batch Color/WHITE)
-    (.setColor font btn-label-color)
-    (let [cap (.getCapHeight font)
-          tw  (.width (GlyphLayout. font ^String label))
-          tx  (float (+ bx (/ (- bw tw) 2.0)))
-          ty  (float (+ by (/ (+ bh cap) 2.0)))]
-      (.draw font batch ^String label tx ty))))
 
 (defn draw
   [{:keys [^SpriteBatch batch ^BitmapFont font ^Texture pixel
@@ -106,9 +86,9 @@
             ty    (float (+ my mh -28))]
         (.draw font batch ^String title tx ty))
       ;; buttons
-      (draw-button! batch font pixel resume       "Resume")
-      (draw-button! batch font pixel quit-to-menu "Quit to Menu")
-      (draw-button! batch font pixel quit-game    "Quit Game"))
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color resume       "Resume")
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color quit-to-menu "Quit to Menu")
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label-color quit-game    "Quit Game"))
     (.end batch)))
 
 (defmethod screens/draw-screen :pause-menu [_ ctx]
@@ -133,8 +113,8 @@
               y     (- vh screen-y)
               rects (button-rects vw vh)]
           (cond
-            (inside? (:resume rects)       screen-x y) (do (app/resume-from-pause-menu!) true)
-            (inside? (:quit-to-menu rects) screen-x y) (do (app/quit-to-menu!)            true)
-            (inside? (:quit-game rects)    screen-x y) (do (app/quit-game!)               true)
+            (screens/inside? (:resume rects)       screen-x y) (do (app/resume-from-pause-menu!) true)
+            (screens/inside? (:quit-to-menu rects) screen-x y) (do (app/quit-to-menu!)            true)
+            (screens/inside? (:quit-game rects)    screen-x y) (do (app/quit-game!)               true)
             :else                                       true))  ; consumed; clicks don't fall through to :play
         false))))

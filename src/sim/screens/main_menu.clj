@@ -37,26 +37,6 @@
     {:new-colony [x new-y  btn-w btn-h]
      :quit       [x quit-y btn-w btn-h]}))
 
-(defn- inside? [[rx ry rw rh] x y]
-  (and (<= (long rx) (long x) (+ (long rx) (long rw)))
-       (<= (long ry) (long y) (+ (long ry) (long rh)))))
-
-(defn- draw-button!
-  [^SpriteBatch batch ^BitmapFont font ^Texture pixel [x y w h] label]
-  (let [bx (float x) by (float y) bw (float w) bh (float h)
-        ix (float (+ bx 2)) iy (float (+ by 2))
-        iw (float (- bw 4)) ih (float (- bh 4))]
-    (.setColor batch btn-border)
-    (.draw batch pixel bx by bw bh)
-    (.setColor batch btn-fill)
-    (.draw batch pixel ix iy iw ih)
-    (.setColor batch Color/WHITE)
-    (.setColor font btn-label)
-    (let [cap (.getCapHeight font)
-          tw  (.width (GlyphLayout. font ^String label))
-          tx  (float (+ bx (/ (- bw tw) 2.0)))
-          ty  (float (+ by (/ (+ bh cap) 2.0)))]
-      (.draw font batch ^String label tx ty))))
 
 (defn draw
   "Render :main-menu. ctx provides batch, font, pixel, ui-cam, viewport dims."
@@ -78,8 +58,8 @@
       (.draw font batch ^String title tx ty))
     ;; buttons
     (let [{:keys [new-colony quit]} (button-rects vw vh)]
-      (draw-button! batch font pixel new-colony "New Colony")
-      (draw-button! batch font pixel quit       "Quit"))
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label new-colony "New Colony")
+      (screens/draw-button! batch font pixel btn-border btn-fill btn-label quit       "Quit"))
     (.end batch)))
 
 (defmethod screens/draw-screen :main-menu [_ ctx]
@@ -100,7 +80,7 @@
               y     (- vh screen-y)
               rects (button-rects vw vh)]
           (cond
-            (inside? (:new-colony rects) x y) (do (app/enter-worldgen!) true)
-            (inside? (:quit rects)       x y) (do (app/quit-game!)      true)
+            (screens/inside? (:new-colony rects) x y) (do (app/enter-worldgen!) true)
+            (screens/inside? (:quit rects)       x y) (do (app/quit-game!)      true)
             :else                              false))   ; left-click miss — pass through
         false))))

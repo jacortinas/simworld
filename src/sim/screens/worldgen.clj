@@ -54,22 +54,6 @@
           tx (float (- (quot vw 2) (quot (long tw) 2)))]
       (.draw font batch s tx (float y)))))
 
-(defn- draw-button!
-  [^SpriteBatch batch ^BitmapFont font ^Texture pixel [x y w h] label]
-  (let [bx (float x) by (float y) bw (float w) bh (float h)
-        ix (float (+ bx 2)) iy (float (+ by 2))
-        iw (float (- bw 4)) ih (float (- bh 4))]
-    (.setColor batch btn-border)
-    (.draw batch pixel bx by bw bh)
-    (.setColor batch btn-fill)
-    (.draw batch pixel ix iy iw ih)
-    (.setColor batch Color/WHITE)
-    (.setColor font text-color)
-    (let [cap (.getCapHeight font)
-          tw  (.width (GlyphLayout. font ^String label))
-          tx  (float (+ bx (/ (- bw tw) 2.0)))
-          ty  (float (+ by (/ (+ bh cap) 2.0)))]
-      (.draw font batch ^String label tx ty))))
 
 (defn draw
   [{:keys [^SpriteBatch batch ^BitmapFont font ^Texture pixel
@@ -93,7 +77,7 @@
                          (some-> ^Throwable (:error wg) .getMessage))
             back    (back-button-rect vw vh)]
         (draw-centered-text! batch font msg (+ (quot vh 2) 60) vw err-color)
-        (draw-button! batch font pixel back "Back to Menu"))
+        (screens/draw-button! batch font pixel btn-border btn-fill text-color back "Back to Menu"))
 
       :done
       nil          ; nothing to draw; we trigger the transition below
@@ -110,11 +94,6 @@
 (defmethod screens/draw-screen :worldgen [_ ctx]
   (draw ctx))
 
-(defn- inside?
-  "Hit-test helper: is screen-coord (sx, sy) inside [rx ry rw rh]?"
-  [[rx ry rw rh] sx sy]
-  (and (<= (long rx) (long sx) (+ (long rx) (long rw)))
-       (<= (long ry) (long sy) (+ (long ry) (long rh)))))
 
 (defn make-processor
   "Build the :worldgen InputProcessor.
@@ -134,7 +113,7 @@
               vh   (.getHeight (Gdx/graphics))
               back (back-button-rect vw vh)
               y    (- vh screen-y)]
-          (if (inside? back screen-x y)
+          (if (screens/inside? back screen-x y)
             (do (app/quit-to-menu!) true)
             false))
         false))))
