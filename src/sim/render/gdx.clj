@@ -96,19 +96,21 @@
               cx   (/ (* (long (:width grid))  tile-size) 2.0)
               cy   (/ (* (long (:height grid)) tile-size) 2.0)]
           (ui/center-camera! cx cy))
-        ;; Build the :play input processor and register it in sim.app/processors.
-        ;; Later tasks add :main-menu, :worldgen, :pause-menu processors. For now,
-        ;; :play is the only one, and we set it as the initial active processor.
+        ;; Build all input processors and register them in sim.app/processors.
+        ;; Screen transition fns swap them via setInputProcessor when :screen changes.
         (let [play-proc (sim.screens.play/make-processor
                          {:camera-fn (fn [] @world-cam)
                           :tile-size tile-size
                           :world-fn  (fn [] @world-atom)})]
-          (swap! sim.app/processors assoc :play play-proc)
-          (.setInputProcessor (Gdx/input) play-proc))
+          (swap! sim.app/processors assoc :play play-proc))
         ;; Main-menu processor — built once GL exists, registered in app/processors.
         (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor))
         ;; Worldgen processor — active only while :worldgen screen is showing.
-        (swap! sim.app/processors assoc :worldgen (sim.screens.worldgen/make-processor)))
+        (swap! sim.app/processors assoc :worldgen (sim.screens.worldgen/make-processor))
+        ;; Initial active processor: :main-menu (the app boots there per sim.app/initial-app).
+        ;; All four processors are registered in sim.app/processors above; the screen
+        ;; transition fns swap them via setInputProcessor when :screen changes.
+        (.setInputProcessor (Gdx/input) (get @sim.app/processors :main-menu)))
 
       (render []
         (poll-camera-keys!)
