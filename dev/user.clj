@@ -10,6 +10,7 @@
    [clojure.pprint    :refer [pprint]]
    [clojure.repl      :refer [doc source dir]]
    [sim.world     :as world]
+   [sim.app       :as app]
    [sim.clock :as clock]
    [sim.simulation :as simulation]
    [sim.pathfinding :as pathfinding]
@@ -252,14 +253,38 @@
   (swap! world/world slog/clear)
   :cleared)
 
+;; ---------------------------------------------------------------------------
+;; Screen transitions — match the in-window buttons so REPL flow mirrors UX.
+;; ---------------------------------------------------------------------------
+
+(defn menu!
+  "Return to the main menu (clock stopped, world cleared). Equivalent to the
+   pause-menu's 'Quit to Menu' button, but callable from any screen."
+  []
+  (app/quit-to-menu!)
+  :main-menu)
+
+(defn new-colony!
+  "Kick off async worldgen → :play, just like clicking New Colony in the
+   in-window menu. Useful when you want a fresh map in the REPL without
+   reaching for the mouse."
+  []
+  (app/enter-worldgen!)
+  :worldgenning)
+
 (comment
-  ;; Typical session:
+  ;; Typical session in the REPL with screens:
+  (new-colony!)        ;; worldgen → :play, three random starter pawns
+  (resume!)            ;; clock comes up paused; this starts the ticks
+  (status)             ;; loop/paused/tick/counts at a glance
+  (tick! 100)          ;; manual step (works whether the loop runs or not)
+  (pause!) (resume!)   ;; or click the in-window pause button / press Space
+  (menu!)              ;; back to the main menu
+
+  ;; Lower-level escape hatches still work for direct-poke development:
   (reset-world!)
   (spawn-pawn! "Dave" [3 3])
-  (go!)               ;; start engine + resume (window is already open)
-  (status)            ;; loop/paused/tick/counts at a glance
-  (tick! 100)         ;; manual stepping — works whether the loop runs or not
-  (pause!) (resume!)  ;; or click the in-window button / press space
+  (go!)                ;; bypasses the menu — clock straight up, no worldgen
   (save-game! "before-experiment")
   ;; …make changes, then: (require 'user :reload-all)…
   (load-game! "before-experiment")
