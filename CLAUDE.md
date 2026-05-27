@@ -90,13 +90,16 @@ namespaces (the directory rename happened early — never use `colony.*`).
   path-viz but no longer runs inside the loop.
 - **Layer 3 — autonomy + content (the survival loop).** Pawns now run
   themselves: a data think-tree (`sim.think`) picks behavior — eat when hungry
-  (walk to nearest reservable food, consume it, refill `:food`), else wander.
+  (walk to nearest reservable food, consume it, refill `:food`), else haul a
+  loose item to a stockpile, else wander.
   Needs decay on the rare band; the hunger threshold and decay rates are content
   (`resources/defs/*.edn`, loaded by `sim.defs`). Reservations
   (`sim.reservation`) keep two pawns off the same target. Verified end-to-end:
   a hungry pawn seeks, eats, and goes back to wandering. Job types: `:go-to`,
-  `:haul`, `:eat`. NOT yet built: auto-haul (the gather loop — needs the haul
-  think-tree leaf reading `stockpile-cells`).
+  `:haul`, `:eat`. Auto-haul DONE: the `give-haul` think-tree leaf gathers loose
+  items (grounded, not already stockpiled, reservable) into the nearest stockpile
+  cell. NOT yet built: a work-priority matrix (give-haul is forward-compatible —
+  it re-homes into a `:hauling` WorkGiver registry unchanged; see the spec).
 - **Stockpile zoning + placement mode.** `Z` enters zoning mode; left-DRAG
   paints a stockpile rectangle, SHIFT+left-DRAG erases cells, `Esc`/right-click
   exits. Zones are saved world state (`sim.zone`, `:zones`); the live drag
@@ -149,11 +152,15 @@ namespaces (the directory rename happened early — never use `colony.*`).
   `(world,pawn) -> job-or-nil`; `sim.ai/redeliberate` routes the job through
   `sim.job/assign` (AUTO, so the reservation gate applies). Adding a behavior =
   add a node + register one giver; the walker never changes. Current leaves: eat
-  (hungry pawn → nearest reservable food → consume, refill `:food` to 1.0) and
-  wander (go-to a random nearby cell). The hunger threshold is content
-  (`needs.edn :food :seek-below`). NOT yet built: a constant/reflex tree for
-  mid-job interrupts, and `PrioritySorter` (float-ranked children). See
-  `docs/superpowers/specs/2026-05-25-think-tree-eat-design.md`.
+  (hungry pawn → nearest reservable food → consume, refill `:food` to 1.0), haul
+  (idle pawn → nearest reservable loose item → nearest stockpile cell, between
+  eat and wander in priority), and wander (go-to a random nearby cell). The
+  hunger threshold is content (`needs.edn :food :seek-below`). NOT yet built: a
+  constant/reflex tree for mid-job interrupts, `PrioritySorter` (float-ranked
+  children), and a WorkType priority matrix (give-haul re-homes into it as a
+  WorkGiver unchanged). See
+  `docs/superpowers/specs/2026-05-25-think-tree-eat-design.md` and
+  `docs/superpowers/specs/2026-05-27-auto-haul-design.md`.
 - **`advance` returns a *world*, not a pawn.** Pickup/drop need to touch
   both the pawn AND the item; returning a world makes that natural. Don't
   revert this — every job since haul depends on it.
