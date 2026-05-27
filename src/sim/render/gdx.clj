@@ -26,6 +26,7 @@
    [sim.screens]       ; loaded so we can use sim.screens/draw-screen fully-qualified
    [sim.screens.play]                    ; side-effect: register :play defmethod
    [sim.screens.main-menu]              ; side-effect: register :main-menu defmethod
+   [sim.screens.worldgen]               ; side-effect: register :worldgen defmethod
    [sim.ui-state      :as ui]
    [sim.ui.hud        :as hud]
    [sim.world         :as world]
@@ -105,7 +106,9 @@
           (swap! sim.app/processors assoc :play play-proc)
           (.setInputProcessor (Gdx/input) play-proc))
         ;; Main-menu processor — built once GL exists, registered in app/processors.
-        (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor)))
+        (swap! sim.app/processors assoc :main-menu (sim.screens.main-menu/make-processor))
+        ;; Worldgen processor — active only while :worldgen screen is showing.
+        (swap! sim.app/processors assoc :worldgen (sim.screens.worldgen/make-processor)))
 
       (render []
         (poll-camera-keys!)
