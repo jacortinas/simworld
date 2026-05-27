@@ -15,7 +15,8 @@
    [sim.entity      :as entity]
    [sim.job         :as job]
    [sim.reservation :as reservation]
-   [sim.tile        :as tile]))
+   [sim.tile        :as tile]
+   [sim.zone        :as zone]))
 
 (set! *warn-on-reflection* true)
 
@@ -78,8 +79,30 @@
   (when-let [c (wander-target world pawn)]
     (job/go-to c)))
 
+(defn- give-haul
+  "Among grounded items NOT already in a stockpile that this pawn can reserve,
+   pick the nearest to the pawn (Manhattan, ties by :id) and haul it to the
+   nearest stockpile cell to that item (ties by [x y]). Nil when there is nothing
+   to haul or no stockpile exists, so the tree falls through to wander. An item
+   already on a stockpile cell is excluded, so a hauled item is never re-picked
+   (self-terminating). In RimWorld terms this is the :hauling WorkType's first
+   WorkGiver — see docs/superpowers/specs/2026-05-27-auto-haul-design.md."
+  [world pawn]
+  (let [pos   (:pos pawn)
+        cells (zone/stockpile-cells world)]
+    (when (seq cells)
+      (let [loose (->> (entity/items world)
+                       (filter #(and (:pos %)
+                                     (not (zone/cell-zoned? world (:pos %)))
+                                     (reservation/can-reserve? world (:id %) (:id pawn)))))]
+        (when (seq loose)
+          (let [item (first (sort-by (juxt #(manhattan pos (:pos %)) :id) loose))
+                dest (first (sort-by (juxt #(manhattan (:pos item) %) identity) cells))]
+            (job/haul (:id item) dest)))))))
+
 (def givers
   {::eat    give-eat
+   ::haul   give-haul
    ::wander give-wander})
 
 ;; ---------------------------------------------------------------------------
@@ -87,11 +110,13 @@
 ;; ---------------------------------------------------------------------------
 
 (def default-tree
-  "Priority order: satisfy hunger, else wander. New behaviors slot in as nodes."
+  "Priority order: satisfy hunger, then do work (haul), else wander. New
+   behaviors slot in as nodes; the walker never changes."
   {:type :priority
    :children [{:type  :conditional
                :pred  ::hungry?
                :child {:type :job-giver :give ::eat}}
+              {:type :job-giver :give ::haul}
               {:type :job-giver :give ::wander}]})
 
 (defn- walk

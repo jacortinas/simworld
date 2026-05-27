@@ -8,7 +8,8 @@
    [sim.world    :as world]
    [sim.entity   :as entity]
    [sim.job      :as job]
-   [sim.think    :as think]))
+   [sim.think    :as think]
+   [sim.zone     :as zone]))
 
 (defn- world+pawn
   "12x12 world with a pawn having `needs` at `pos`. Returns [world pawn-id]."
@@ -65,3 +66,92 @@
         j       (think/deliberate w (entity/entity w pid))]
     (is (= :go-to (:type j)))
     (is (some? (:target j)) "wander targets a cell")))
+
+(deftest haul-giver-yields-haul-job
+  (testing "fed pawn + loose item + stockpile -> :haul job to a stockpile cell"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          item     (entity/make-item :wood [5 5])
+          w        (-> w0
+                       (entity/add-entity item)
+                       (zone/add-stockpile [8 8] [9 9]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :haul (:type j)))
+      (is (= (:id item) (:item-id j)))
+      (is (contains? (zone/stockpile-cells w) (:destination j))
+          "destination is a stockpile cell"))))
+
+(deftest haul-giver-picks-nearest-item
+  (testing "nearest loose item to the pawn is chosen (Manhattan)"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          near     (entity/make-item :wood [2 2])
+          far      (entity/make-item :wood [9 9])
+          w        (-> w0
+                       (entity/add-entity far)
+                       (entity/add-entity near)
+                       (zone/add-stockpile [5 5] [6 6]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= (:id near) (:item-id j)) "hauls the nearer item first"))))
+
+(deftest haul-giver-picks-nearest-dest-cell
+  (testing "destination is the stockpile cell nearest the item"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          item     (entity/make-item :wood [5 5])
+          w        (-> w0
+                       (entity/add-entity item)
+                       (zone/add-stockpile [0 0] [2 2]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= [2 2] (:destination j)) "the [2 2] corner is nearest [5 5] in the rect"))))
+
+(deftest haul-giver-needs-a-stockpile
+  (testing "loose item but no stockpile -> nil giver -> wander"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          w        (entity/add-entity w0 (entity/make-item :wood [5 5]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :go-to (:type j)) "no stockpile means nothing to haul to"))))
+
+(deftest haul-giver-skips-already-stored
+  (testing "an item already on a stockpile cell is not re-hauled -> wander"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          item     (entity/make-item :wood [5 5])
+          w        (-> w0
+                       (entity/add-entity item)
+                       (zone/add-stockpile [5 5] [6 6]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :go-to (:type j)) "item sits in the stockpile, so it is not loose"))))
+
+(deftest haul-giver-skips-reserved-item
+  (testing "an item another pawn is already hauling is not offered -> wander"
+    (let [[w0 a]  (world+pawn {:food 1.0} [0 0])
+          item    (entity/make-item :wood [5 5])
+          other   (entity/make-pawn "other" [5 5])
+          w       (-> w0
+                      (entity/add-entity item)
+                      (entity/add-entity other)
+                      (zone/add-stockpile [8 8] [9 9])
+                      (entity/update-entity (:id other) assoc
+                                            :job (job/haul (:id item) [8 8])))
+          j       (think/deliberate w (entity/entity w a))]
+      (is (= :go-to (:type j)) "the only loose item is reserved, so a wanders"))))
+
+(deftest hunger-out-prioritizes-haul
+  (testing "a hungry pawn eats even when haulable work exists (eat > haul)"
+    (let [[w0 pid] (world+pawn {:food 0.1} [0 0])
+          food     (entity/make-item :food [2 2])
+          wood     (entity/make-item :wood [3 3])
+          w        (-> w0
+                       (entity/add-entity food)
+                       (entity/add-entity wood)
+                       (zone/add-stockpile [8 8] [9 9]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :eat (:type j)) "survival beats work")
+      (is (= (:id food) (:item-id j))))))
+
+(deftest haul-out-prioritizes-wander
+  (testing "a fed pawn with haulable work hauls instead of wandering (haul > wander)"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          item     (entity/make-item :wood [5 5])
+          w        (-> w0
+                       (entity/add-entity item)
+                       (zone/add-stockpile [8 8] [9 9]))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :haul (:type j)) "work beats idling"))))
