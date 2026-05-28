@@ -50,7 +50,11 @@ namespaces (the directory rename happened early — never use `colony.*`).
   thread + GL context) and reads `@sim.world/world` every frame. Pure layer
   fns compose under one SpriteBatch, drawing 32rogues sprites preloaded as
   Textures by `sim.render.sprites` (Nearest-filtered for crisp pixel art):
-  `render.layers.terrain` / `.items` / `.pawns`. `tile-size` is 32. All layers
+  `render.layers.terrain` / `.items` / `.pawns`. `tile-size` is 32. The terrain
+  layer stamps a per-terrain `:color` base quad (content in `terrain.edn`, via
+  the shared 1px pixel texture) then the detail sprite on top — transparent
+  "(no bg)" cells show the bright base; `:water` uses the real water tile on
+  `animated-tiles.png`. All layers
   anchor at the tile's bottom-left with a `(height-1-y)` flip, matching
   `sim.input/screen->tile` so clicks hit the right tile. Dual
   `OrthographicCamera` — world cam pans/zooms, fixed UI cam for the HUD.
@@ -358,11 +362,13 @@ old compiled loop body until `start!` respawns it.
 - **Sprite migration is DONE.** All three world layers draw 32rogues sprites
   (`sim.render.sprites` preloads the sheets; cell maps transcribed from the
   `.txt` files, validated by `sim.sprites-test`). The world-space selection box
-  is now DONE (see "Tile inspect + entity selection"). Not yet done: animated
-  tiles (`animated-tiles.png`), autotiling for walls/edges (`autotiles.png`),
-  and a HUD font upgrade (default BitmapFont at 1.0 — crisp but small;
-  gdx-freetype would give larger crisp text). The map is still all-grass until
-  worldgen.
+  is now DONE (see "Tile inspect + entity selection"). Terrain now renders a
+  per-terrain `:color` base + "(no bg)" detail sprite (bright, not the old dark
+  dungeon look); `:water` uses the real water tile from `animated-tiles.png`
+  (static frame). Not yet done: tile ANIMATION (a real-time frame-stepper for
+  the water/fire frames), autotiling for walls/edges (`autotiles.png`), and a
+  HUD font upgrade (default BitmapFont at 1.0 — crisp but small; gdx-freetype
+  would give larger crisp text).
 
 ## Files to know
 
