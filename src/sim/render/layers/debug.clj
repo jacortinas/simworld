@@ -40,21 +40,26 @@
      (+ (* (double (- (long height) (long ty) 1)) ts) (/ ts 2.0))]))
 
 (defn path->segments
-  "Turn a path (vector of [x y] tiles) into thin axis-aligned line-segment
-   rects [x y w h] (doubles, world pixels) — one per consecutive tile pair,
-   each connecting the two tile centers. Paths are 4-connected so every
-   segment is purely horizontal or vertical. nil / empty / single-tile → []."
+  "Turn a path (vector of [x y] tiles) into thin line segments connecting
+   consecutive tile centers — one per pair. Each is [x y w h angle] (doubles):
+   a rect of width=center-to-center distance and height=line-thickness, with its
+   bottom-left at [x y] and rotated `angle` degrees about its LEFT-CENTER origin
+   (0, line-thickness/2), so it runs from the first tile's center to the second's.
+   This handles ANY direction — cardinal and diagonal (paths are 8-connected);
+   the old axis-aligned form rendered diagonals as a vertical stub. The
+   (height-1-y) Y-flip (via tile-center) matches the sprites underneath.
+   nil / empty / single-tile → []."
   [path tile-size height]
   (let [half (/ line-thickness 2.0)]
     (mapv (fn [[a b]]
             (let [[ax ay] (tile-center a tile-size height)
-                  [bx by] (tile-center b tile-size height)]
-              (if (== ay by)
-                ;; horizontal step: span the x-gap, line-thickness tall,
-                ;; thickness centered on the shared y (hence -half).
-                [(min ax bx) (- ay half) (Math/abs (double (- bx ax))) line-thickness]
-                ;; vertical step: mirror — span the y-gap, thickness wide.
-                [(- ax half) (min ay by) line-thickness (Math/abs (double (- by ay)))])))
+                  [bx by] (tile-center b tile-size height)
+                  dx      (- bx ax)
+                  dy      (- by ay)]
+              [ax (- ay half)
+               (Math/sqrt (+ (* dx dx) (* dy dy)))   ; length: center to center
+               line-thickness
+               (Math/toDegrees (Math/atan2 dy dx))])) ; rotate to the segment angle
           (partition 2 1 path))))
 
 (defn remaining-path
@@ -81,8 +86,18 @@
           ;; this is purely a view transform (remaining-path is pure).
           (let [ahead (remaining-path path (get-in pawn [:job :path-index] 0))]
             (.setColor batch path-color)
-            (doseq [[x y w h] (path->segments ahead tile-size height)]
-              (.draw batch pixel (float x) (float y) (float w) (float h)))
+            (doseq [[x y w h ang] (path->segments ahead tile-size height)]
+              ;; Rotated-quad draw: stretch the 1px pixel into a thin rect and
+              ;; spin it about its left-center (0, line-thickness/2) so the
+              ;; segment points along the step — diagonals included.
+              (.draw batch pixel
+                     (float x) (float y)
+                     (float 0.0) (float (/ line-thickness 2.0))  ; rotation origin
+                     (float w) (float h)
+                     (float 1.0) (float 1.0)                     ; no extra scale
+                     (float ang)
+                     (int 0) (int 0) (int 1) (int 1)             ; src = the 1×1 pixel
+                     false false))
             ;; peek of a suffix is still the true goal tile.
             (when (seq ahead)
               (let [[cx cy] (tile-center (peek ahead) tile-size height)
