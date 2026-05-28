@@ -60,3 +60,24 @@
     (defs/load-sources! {:material [{:wood {:weight 0.7}}
                                     {:wood {:weight 9.9}}]})
     (is (= 9.9 (:weight (defs/material :wood))))))
+
+(deftest every-terrain-has-a-valid-color
+  (testing "each terrain def carries a [r g b] base color of 3 doubles in [0,1]"
+    (doseq [k (defs/ids :terrain)]
+      (let [c (:color (defs/terrain k))]
+        (is (vector? c) (str k " :color should be a vector"))
+        (is (= 3 (count c)) (str k " :color should have 3 components"))
+        (is (every? #(<= 0.0 (double %) 1.0) c) (str k " :color components in [0,1]"))))))
+
+(deftest terrain-color-returns-base-and-fallback
+  (testing "terrain-color returns the def's color"
+    (is (= (:color (defs/terrain :grass)) (defs/terrain-color :grass))))
+  (testing "an unknown terrain falls back to grass's color (terrain falls back to grass)"
+    (is (= (defs/terrain-color :grass) (defs/terrain-color :no-such-terrain)))))
+
+(deftest load-rejects-out-of-range-color
+  (testing "a terrain :color component above 1.0 fails validation"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)color"
+         (defs/load-sources! {:terrain [{:grass {:move-cost 1.0 :passable? true
+                                                 :color [2.0 0.0 0.0]}}]})))))

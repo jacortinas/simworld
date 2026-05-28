@@ -33,6 +33,11 @@
   ^double [terrain-key]
   (double (:move-cost (terrain-info terrain-key))))
 
+(defn terrain-color
+  "Base [r g b] render color for a terrain type (delegates to sim.defs)."
+  [terrain-key]
+  (defs/terrain-color terrain-key))
+
 ;; ---------------------------------------------------------------------------
 ;; Grid access — linearized index lets us swap in long-array later
 ;; ---------------------------------------------------------------------------

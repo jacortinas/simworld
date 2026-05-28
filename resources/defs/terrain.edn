@@ -1,11 +1,13 @@
 ;; Terrain defs — loaded by sim.defs into (:terrain db). Content, not code.
 ;; :move-cost is a traversal-cost multiplier (1.0 = baseline, higher = slower);
 ;; :passable? false makes pathfinding refuse the tile; :char is legacy (terminal
-;; renderer only — sprites drive real rendering). Values loosely model RimWorld's
-;; terrain modifiers (gravel ~87%, paved 100%); tune at will.
-{:grass  {:char \. :move-cost 1.0  :passable? true}
- :dirt   {:char \, :move-cost 1.15 :passable? true}
- :gravel {:char \: :move-cost 1.30 :passable? true}
- :stone  {:char \# :move-cost 1.0  :passable? false}
- :water  {:char \~ :move-cost 2.5  :passable? true}
- :wall   {:char \# :move-cost 1.0  :passable? false}}
+;; renderer only — sprites drive real rendering). :color is the [r g b] base
+;; (0-1 doubles) the terrain render layer stamps under the detail sprite — tune
+;; live with (reload-defs!). Values loosely model RimWorld's terrain modifiers
+;; (gravel ~87%, paved 100%); tune at will.
+{:grass  {:char \. :move-cost 1.0  :passable? true  :color [0.36 0.62 0.30]}
+ :dirt   {:char \, :move-cost 1.15 :passable? true  :color [0.55 0.43 0.28]}
+ :gravel {:char \: :move-cost 1.30 :passable? true  :color [0.60 0.60 0.62]}
+ :stone  {:char \# :move-cost 1.0  :passable? false :color [0.40 0.40 0.42]}
+ :water  {:char \~ :move-cost 2.5  :passable? true  :color [0.20 0.45 0.75]}
+ :wall   {:char \# :move-cost 1.0  :passable? false :color [0.30 0.30 0.32]}}
