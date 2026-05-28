@@ -48,7 +48,7 @@
     (.setProjectionMatrix batch (.combined world-cam))
     (.begin batch)
     (.setColor batch Color/WHITE)
-    (terrain/draw     world batch tile-size)
+    (terrain/draw     world batch tile-size pixel)
     ;; Stockpile-zone floor overlay + live drag preview: above terrain, below
     ;; flora/items/pawns so stored items show on top of the zone.
     (zones-layer/draw world batch tile-size pixel)

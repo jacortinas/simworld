@@ -131,7 +131,7 @@
                    :tile-size tile-size
                    :world     w
                    :app       @sim.app/app}]
-          (.glClearColor (Gdx/gl) 0.05 0.05 0.08 1.0)
+          (.glClearColor (Gdx/gl) 0.12 0.13 0.16 1.0)
           (.glClear      (Gdx/gl) GL20/GL_COLOR_BUFFER_BIT)
           (sim.screens/draw-screen (sim.app/current-screen) ctx)))
 
