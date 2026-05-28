@@ -14,14 +14,16 @@
    [sim.defs :as defs]))
 
 (def ^:private sheet-files
-  {:tiles  "32rogues/tiles.png"
-   :rogues "32rogues/rogues.png"
-   :items  "32rogues/items.png"})
+  {:tiles    "32rogues/tiles.png"
+   :rogues   "32rogues/rogues.png"
+   :items    "32rogues/items.png"
+   :animated "32rogues/animated-tiles.png"})
 
 (def ^:private expected-grid    ; [cols rows] of 32px cells
-  {:tiles  [17 26]
-   :rogues [7 7]
-   :items  [11 26]})
+  {:tiles    [17 26]
+   :rogues   [7 7]
+   :items    [11 26]
+   :animated [11 12]})
 
 (defn- png-dims
   "Read [width height] in pixels from a PNG's IHDR (bytes 16-23, big-endian)."
@@ -49,11 +51,11 @@
         (str "terrain " k " has no sprite cell — would fall back to grass"))))
 
 (deftest mapped-cells-are-in-bounds
-  (let [[tc tr] (expected-grid :tiles)]
-    (doseq [[k [c r]] sprites/terrain->cell]
-      (testing (str "terrain " (name k))
-        (is (and (<= 0 c) (< c tc)) (str "col " c " out of 0.." (dec tc)))
-        (is (and (<= 0 r) (< r tr)) (str "row " r " out of 0.." (dec tr))))))
+  (doseq [[k [sheet c r]] sprites/terrain->cell]
+    (let [[cols rows] (expected-grid sheet)]
+      (testing (str "terrain " (name k) " on sheet " (name sheet))
+        (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
+        (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows))))))
   (let [[rc rr] (expected-grid :rogues)
         [c r]   @#'sprites/pawn-cell]
     (testing "pawn cell"

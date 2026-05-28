@@ -27,9 +27,10 @@
 (def ^:const sprite-size 32)
 
 (def ^:private sheet-files
-  {:tiles  "32rogues/tiles.png"
-   :rogues "32rogues/rogues.png"
-   :items  "32rogues/items.png"})
+  {:tiles    "32rogues/tiles.png"
+   :rogues   "32rogues/rogues.png"
+   :items    "32rogues/items.png"
+   :animated "32rogues/animated-tiles.png"})
 
 ;; GL resources. defonce so the atoms survive ns reload; load!/dispose! manage
 ;; their contents against the window's GL-context lifetime.
@@ -71,22 +72,25 @@
           (swap! region-cache assoc k r)
           r))))
 
-;; --- lookup tables: terrain keyword -> [col row] (see 32rogues/tiles.txt) ---
+;; --- lookup tables: terrain keyword -> [sheet col row] (see 32rogues/*.txt) ---
+;; Ground uses the "(no bg)" detail cells (transparent — the layer paints the
+;; terrain :color base behind them); :water uses the real water tile on the
+;; animated sheet (static frame 1). Same [sheet col row] shape as material->cell.
 (def terrain->cell
-  {:grass  [1 7]    ; 8.b  grass 1
-   :dirt   [1 8]    ; 9.b  dirt 1
-   :gravel [1 9]    ; 10.b stone floor 1
-   :stone  [0 1]    ; 2.a  rough stone wall (top)
-   :water  [0 12]   ; 13.a blank blue floor (no true water tile in this set)
-   :wall   [0 2]})  ; 3.a  stone brick wall (top)
+  {:grass  [:tiles    4 7]    ; 8.e  grass 1 (no bg)
+   :dirt   [:tiles    4 8]    ; 9.e  dirt 1 (no bg)
+   :gravel [:tiles    4 9]    ; 10.e stone floor 1 (no bg)
+   :stone  [:tiles    0 1]    ; 2.a  rough stone wall (top)
+   :water  [:animated 0 10]   ; animated row 11 "water waves", frame 1
+   :wall   [:tiles    0 2]})  ; 3.a  stone brick wall (top)
 
 (def ^:private pawn-cell [1 6])   ; rogues 7.b farmer (scythe)
 
 (defn terrain-region
   "Sprite region for a terrain keyword; falls back to grass if unmapped."
   ^TextureRegion [terrain-key]
-  (let [[c r] (terrain->cell terrain-key (terrain->cell :grass))]
-    (region :tiles c r)))
+  (let [[sheet c r] (terrain->cell terrain-key (terrain->cell :grass))]
+    (region sheet c r)))
 
 (defn pawn-region ^TextureRegion []
   (region :rogues (pawn-cell 0) (pawn-cell 1)))
