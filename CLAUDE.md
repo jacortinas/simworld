@@ -37,8 +37,10 @@ namespaces (the directory rename happened early — never use `colony.*`).
 ## What's working
 
 - **Layer 1 — core sim.** Tiles (linearized grid), pawns with needs/skills,
-  A* pathfinding, `:go-to` jobs. 30 Hz fixed-timestep tick loop; rendering is
-  fully decoupled (see below).
+  8-directional A* pathfinding (octile heuristic, diagonal ×√2 cost, no
+  corner-cutting), `:go-to` jobs. Pawns GLIDE between cells (sub-cell movement
+  timing — see the movement decision below), not teleport. 30 Hz fixed-timestep
+  tick loop; rendering is fully decoupled (see below).
 - **Layer 2 — items + haul jobs.** `:haul` job is a 4-phase FSM
   (`:go-to-item → :pickup → :go-to-dest → :drop`). `job/advance` returns a
   *world* (not pawn) so jobs can mutate multiple entities atomically.
@@ -168,6 +170,26 @@ namespaces (the directory rename happened early — never use `colony.*`).
 - **`advance` returns a *world*, not a pawn.** Pickup/drop need to touch
   both the pawn AND the item; returning a world makes that natural. Don't
   revert this — every job since haul depends on it.
+- **Movement is grid-faithful but glides (RimWorld's model).** Pawns always
+  *logically* occupy an integer cell; the smoothness is a render lie.
+  `walk-toward` is a sub-cell progress accumulator: a `:move {:from :to :elapsed
+  :cost}` record in the job tracks the segment in flight, `:elapsed` climbs one
+  tick per `advance`, and the cell completes when `:elapsed >= :cost`. Three
+  load-bearing rules: (1) **`:pos` flips to the destination cell at move START**
+  (the pawn occupies the cell it is ENTERING — reservation/collision honesty;
+  consequence: a mid-move pawn is selectable on its *leading* cell). (2) **Speed
+  is denominated in TICKS, never wall-clock** — `segment-cost = max(1, round(
+  move-ticks × pathfinding/traversal-cost))`, the SAME currency A* minimizes, so
+  the route chosen is the fastest to walk, and a future clock tick-rate
+  multiplier scales speed/needs/bands together for free (the deferred speed-
+  settings seam). (3) **The progress FLOAT lives only in render** (`sim.render.
+  interp/draw-pos` lerps `:from → :pos` by `:elapsed/:cost` with the Y-flip) —
+  the sim stays integer-tick, so same-seed runs are bit-identical. There is NO
+  speed gate in `sim.ai/advance-job` (the old 15-tick `moves-this-tick?`
+  complected walk-speed with deliberation cadence — deleted; advance runs every
+  tick). `:move`/`:move-ticks` are plain world state, so they save for free; old
+  saves load settled. See `docs/superpowers/specs/2026-05-27-8-directional-
+  movement-design.md`.
 - **Player override pattern.** Player commands set `:priority :forced
   :source :player` on the job (the `job/forced-by-player` override). Auto-
   assignment later will check these.
@@ -384,8 +406,12 @@ old compiled loop body until `start!` respawns it.
   index, the band→systems registry, `run`/`run*`, `reindex`
 - `src/sim/clock.clj` — the simulation clock (fixed-timestep tick driver);
   `start!`/`stop!` (liveness), `pause!`/`resume!`/`toggle-pause!` (sim-time)
-- `src/sim/job.clj` — defmulti `advance`, haul phases, `walk-toward`, `assign`
-  (+ `prime-path`: eager go-to pathing at assign time)
+- `src/sim/job.clj` — defmulti `advance`, haul phases, `assign` (+ `prime-path`:
+  eager go-to pathing at assign time), and the movement core: `segment-cost`
+  (ticks to cross a cell) + `walk-toward` (the sub-cell progress accumulator)
+- `src/sim/pathfinding.clj` — 8-directional A*: `find-path` + `traversal-cost`
+  (the unified terrain×√2-diagonal cost A* and movement share); octile heuristic,
+  corner rule
 - `src/sim/reservation.clj` — PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
   stored state, release is automatic. Depends only on `sim.entity`.
@@ -397,9 +423,9 @@ old compiled loop body until `start!` respawns it.
   preview (pure rect geometry + untested GL fill); composed just above terrain.
 - `src/sim/think.clj` — the DATA think-tree + pure walker (`deliberate`) +
   pred/giver registries + `default-tree`. Idle behavior selection lives here.
-- `src/sim/ai.clj` — `advance-job` (job execution, every tick) + `redeliberate`
-  (idle choice: walks `sim.think` then `job/assign`s the result; rare-throttled
-  by the caller)
+- `src/sim/ai.clj` — `advance-job` (job execution, every tick — NO speed gate;
+  speed lives in `job/segment-cost`) + `redeliberate` (idle choice: walks
+  `sim.think` then `job/assign`s the result; rare-throttled by the caller)
 - `src/sim/log.clj` — debug log helpers (append/recent/of-type/for-pawn)
 - `src/sim/inspect.clj` — PURE tile inspection: `describe-tile` (concept-line
   strings), `selectable-at` (entities on a tile, sorted by id). Headless-tested.
@@ -416,9 +442,14 @@ old compiled loop body until `start!` respawns it.
   `sim.inspect`; untested `draw`)
 - `src/sim/render/gdx.clj` — libGDX window, layer compositor, HUD draw, input wiring
 - `src/sim/render/sprites.clj` — 32rogues sheet loading + cached region lookup + cell maps
+- `src/sim/render/interp.clj` — PURE render-time `draw-pos`: lerps a gliding
+  pawn's DRAWN position between cells (the only place tick-progress becomes a
+  float; render-only, never stored). Used by the pawns + selection layers.
 - `src/sim/render/layers/{terrain,items,pawns}.clj` — pure sprite-draw layers
+  (`pawns` draws at `interp/draw-pos`, so walkers glide)
 - `src/sim/render/layers/selection.clj` — world-space selection box; pure
-  `selection-box-rects` + the GL `draw`
+  `selection-box-rects` (world-pixel based; follows the glide via `draw-pos`) +
+  the GL `draw`
 - `src/sim/render/layers/debug.clj` — gated debug overlay (pawn paths); pure
   `path->segments` / `remaining-path` + the GL `draw`
 - `src/sim/render.clj` — terminal renderer (REPL path-viz only now)

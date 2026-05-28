@@ -4,10 +4,11 @@
    apply). These tests drive that end to end."
   (:require
    [clojure.test :refer [deftest is testing]]
-   [sim.world  :as world]
-   [sim.entity :as entity]
-   [sim.job    :as job]
-   [sim.ai     :as ai]))
+   [sim.world      :as world]
+   [sim.entity     :as entity]
+   [sim.job        :as job]
+   [sim.simulation :as simulation]
+   [sim.ai         :as ai]))
 
 (deftest redeliberate-assigns-eat-to-hungry-idle-pawn
   (let [w0 (world/initial-world {:width 12 :height 12})
@@ -44,3 +45,22 @@
       (is (= 1 (count eats))                 "exactly one pawn eats the food")
       (is (= (:id f) (:item-id (first eats))))
       (is (some #(= :go-to (:type %)) [ja jb]) "the other wanders"))))
+
+;; ---------------------------------------------------------------------------
+;; advance-job runs the active job EVERY tick — no speed gate. Move speed lives
+;; in sim.job/segment-cost (ticks per cell), not in a deliberation-cadence gate,
+;; so an in-flight glide accumulates one tick of progress per tick.
+;; ---------------------------------------------------------------------------
+
+(deftest moving-pawn-glides-every-tick
+  (testing "an active go-to advances its glide each tick; elapsed climbs ~1/tick
+            rather than waiting for a 15-tick window"
+    (let [w0  (-> (world/initial-world {:width 12 :height 12})
+                  (entity/add-entity (entity/make-pawn "walker" [0 0])))
+          pid (:id (first (entity/pawns w0)))
+          w1  (entity/update-entity w0 pid assoc :job (job/go-to [5 0]))
+          wN  (nth (iterate simulation/tick w1) 6)
+          mv  (get-in (entity/entity wN pid) [:job :move])]
+      (is (some? mv) "a segment is in flight after a few ticks")
+      (is (> (long (:elapsed mv)) 1)
+          "the glide accumulated multiple ticks of progress (gate removed)"))))

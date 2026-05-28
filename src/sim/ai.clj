@@ -11,32 +11,21 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const ^:private move-period
-  "Ticks between movement decisions. At 30 Hz sim, 15 = twice per second."
-  15)
-
-(defn- moves-this-tick?
-  "Stagger pawns by id so they don't all twitch in lockstep."
-  [world pawn]
-  (zero? (mod (+ (long (:clock world)) (long (:id pawn))) move-period)))
-
 (defn advance-job
   "Job-execution step for one pawn — runs every tick. Clears a finished job;
-   otherwise advances it (the physical step is gated by the pawn's move
-   cadence). Pure: (world, pawn) -> world."
+   otherwise advances it one tick. There is NO speed gate here: move speed lives
+   in sim.job/segment-cost (ticks per cell), so the glide accumulates smoothly,
+   one tick at a time. (The old 15-tick gate complected walk speed with the
+   scheduler's deliberation cadence — two unrelated concerns.) Pure:
+   (world, pawn) -> world."
   [world pawn]
   (cond
     ;; Clean up a finished job — pawn is idle starting this tick.
     (and (:job pawn) (job/done? (:job pawn)))
     (entity/update-entity world (:id pawn) assoc :job nil)
 
-    ;; Active job: compute path immediately, step on gated ticks.
     (:job pawn)
-    (if (nil? (get-in pawn [:job :path]))
-      (job/advance world pawn)
-      (if (moves-this-tick? world pawn)
-        (job/advance world pawn)
-        world))
+    (job/advance world pawn)
 
     :else world))
 

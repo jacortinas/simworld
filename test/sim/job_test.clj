@@ -33,6 +33,11 @@
         w
         (recur (job/advance w (entity/entity w pid)) (inc n))))))
 
+(defn- drive-n
+  "Call job/advance exactly `n` times, re-fetching the pawn each step."
+  [world pid n]
+  (reduce (fn [w _] (job/advance w (entity/entity w pid))) world (range n)))
+
 ;; ---------------------------------------------------------------------------
 ;; Haul — full lifecycle
 ;; ---------------------------------------------------------------------------
@@ -115,6 +120,88 @@
                    (entity/update-entity pid assoc :job (job/go-to [5 5])))
           w2   (job/advance w1 (entity/entity w1 pid))]
       (is (job/failed? (:job (entity/entity w2 pid)))))))
+
+;; ---------------------------------------------------------------------------
+;; Sub-cell movement timing — a pawn GLIDES across a cell over `cost` ticks
+;; instead of teleporting one tile per advance. :pos flips to the destination at
+;; move-start (decision D2); the glide (:elapsed -> :cost) is what takes time.
+;; cost = move-ticks × traversal-cost, so terrain and diagonals slow the walk.
+;; ---------------------------------------------------------------------------
+
+(deftest segment-cost-cardinal-is-move-ticks
+  (let [g (tile/make-grid 12 12)]
+    (is (= 15 (job/segment-cost g 15 [0 0] [1 0])) "grass cardinal = move-ticks")))
+
+(deftest segment-cost-diagonal-scales-by-root2
+  (let [g (tile/make-grid 12 12)]
+    (is (= 21 (job/segment-cost g 15 [0 0] [1 1])) "round(15 × √2) = 21")))
+
+(deftest segment-cost-honors-terrain
+  (let [g (tile/set-tile (tile/make-grid 12 12) 1 0 :water)] ; move-cost 2.5
+    (is (= 38 (job/segment-cost g 15 [0 0] [1 0])) "round(15 × 2.5) = 38")))
+
+(deftest segment-cost-never-zero
+  (let [g (tile/make-grid 12 12)]
+    (is (= 1 (job/segment-cost g 0 [0 0] [1 0])) "clamps to a 1-tick minimum")))
+
+(deftest walking-flips-pos-and-records-a-segment
+  (testing "starting a move sets :pos to the destination cell and records the
+            from/to/cost it is gliding across — still in-progress, not arrived"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [1 0]))
+          w2   (drive-n w1 pid 2)            ; compute path, then start segment
+          pawn (entity/entity w2 pid)
+          mv   (get-in pawn [:job :move])]
+      (is (= [1 0] (:pos pawn))    "pos flips to the destination at move-start")
+      (is (= [0 0] (:from mv))     "move remembers the cell being left")
+      (is (= [1 0] (:to mv))       "...and the cell being entered")
+      (is (= 15 (:cost mv))        "cardinal grass costs move-ticks to cross")
+      (is (not (job/complete? (:job pawn))) "still gliding, not yet arrived"))))
+
+(deftest diagonal-move-costs-more-ticks
+  (testing "a diagonal segment records the √2-scaled cost"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [1 1]))
+          w2   (drive-n w1 pid 2)
+          mv   (get-in (entity/entity w2 pid) [:job :move])]
+      (is (= [1 1] (:to mv)))
+      (is (= 21 (:cost mv)) "diagonal grass = round(15 × √2)"))))
+
+(deftest crossing-a-cell-takes-many-ticks-not-one
+  (testing "a one-cell go-to is NOT done after a couple ticks; it needs ~cost"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [1 0]))
+          mid  (drive-n w1 pid 8)            ; well short of cost (15)
+          done (drive w1 pid 200)]
+      (is (not (job/done? (:job (entity/entity mid pid))))
+          "still walking partway across the cell")
+      (is (job/complete? (:job (entity/entity done pid))) "completes once across")
+      (is (= [1 0] (:pos (entity/entity done pid))) "ends on the target cell"))))
+
+(deftest arrival-fires-on-the-exact-cost-tick
+  (testing "a one-cell go-to (cost 15) completes on the precise tick the glide
+            finishes — guards the (< elapsed cost) threshold against off-by-one.
+            Tick 1 computes the path, tick 2 starts the segment (elapsed 0),
+            then 15 glide ticks -> done at tick 17."
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [1 0]))]
+      (is (not (job/done? (:job (entity/entity (drive-n w1 pid 16) pid))))
+          "still gliding at tick 16")
+      (is (job/complete? (:job (entity/entity (drive-n w1 pid 17) pid)))
+          "arrives exactly at tick 17"))))
+
+(deftest multi-cell-path-has-no-dead-tick-between-cells
+  (testing "rolling from one segment straight into the next costs no extra tick:
+            two cardinal cells (cost 15 each) finish at tick 32, not 33+.
+            1 path tick + 2×15 glide ticks = 32, with the boundary handled in the
+            same tick the first cell completes."
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [2 0]))]
+      (is (not (job/done? (:job (entity/entity (drive-n w1 pid 31) pid))))
+          "still on the second cell at tick 31")
+      (is (job/complete? (:job (entity/entity (drive-n w1 pid 32) pid)))
+          "both cells crossed by tick 32 — no per-cell settle tick")
+      (is (= [2 0] (:pos (entity/entity (drive-n w1 pid 32) pid)))))))
 
 ;; ---------------------------------------------------------------------------
 ;; assign — the one path all assignment routes through

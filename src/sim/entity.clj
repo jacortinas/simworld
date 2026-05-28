@@ -34,7 +34,10 @@
    :skills      {}
    :job         nil
    :carrying    nil
-   :path        nil})
+   ;; Base ticks to cross one cardinal grass cell (move-cost 1.0). Terrain and
+   ;; diagonals scale this in sim.job/segment-cost. At 30 Hz, 15 ≈ 0.5 s/cell.
+   ;; Hardcoded for now; a future per-pawn speed stat is just a multiplier.
+   :move-ticks  15})
 
 ;; ---------------------------------------------------------------------------
 ;; Items
