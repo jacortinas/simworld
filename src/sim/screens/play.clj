@@ -40,7 +40,11 @@
            ^OrthographicCamera ui-cam
            tile-size
            world]}]
-  (let [cam (ui/camera)]
+  (let [cam    (ui/camera)
+        ;; Wall-clock stamp for this frame — drives real-time sprite animation
+        ;; (sim.render.anim). On real-time, NOT the sim clock, so water ripples
+        ;; while paused; captured once so all animated tiles share one frame.
+        now-ms (System/currentTimeMillis)]
     ;; --- Sync world cam from ui-state data, then draw world layers ---
     (.set (.position world-cam) (float (:x cam)) (float (:y cam)) (float 0.0))
     (set! (.zoom world-cam) (float (:zoom cam)))
@@ -48,7 +52,7 @@
     (.setProjectionMatrix batch (.combined world-cam))
     (.begin batch)
     (.setColor batch Color/WHITE)
-    (terrain/draw     world batch tile-size pixel)
+    (terrain/draw     world batch tile-size pixel now-ms)
     ;; Stockpile-zone floor overlay + live drag preview: above terrain, below
     ;; flora/items/pawns so stored items show on top of the zone.
     (zones-layer/draw world batch tile-size pixel)

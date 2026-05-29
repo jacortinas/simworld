@@ -86,11 +86,9 @@
 
 (def ^:private pawn-cell [1 6])   ; rogues 7.b farmer (scythe)
 
-(defn terrain-region
-  "Sprite region for a terrain keyword; falls back to grass if unmapped."
-  ^TextureRegion [terrain-key]
-  (let [[sheet c r] (terrain->cell terrain-key (terrain->cell :grass))]
-    (region sheet c r)))
+;; Terrain regions are resolved via sim.render.anim/terrain-cell (which adds the
+;; time dimension for animated terrain) + this ns's `region`; there is no static
+;; terrain-region helper — the layer composes the two so animation is uniform.
 
 (defn pawn-region ^TextureRegion []
   (region :rogues (pawn-cell 0) (pawn-cell 1)))
