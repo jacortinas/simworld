@@ -91,18 +91,19 @@
   (reset! flip-cache {}))
 
 (defn region
-  "Cached TextureRegion for cell (col,row) of `sheet-key`. Source pixels are
+  "Cached TextureRegion for cell (col,row) of `sheet-key`, or nil if the sheet is
+   not loaded (degrade, matching graphic-region's contract). Source pixels are
    measured from the sheet's TOP-LEFT: (col*32, row*32)."
   ^TextureRegion [sheet-key col row]
   (let [k [sheet-key col row]]
     (or (@region-cache k)
-        (let [^Texture t (@sheets sheet-key)
-              r (TextureRegion. t
-                                (int (* (long col) sprite-size))
-                                (int (* (long row) sprite-size))
-                                (int sprite-size) (int sprite-size))]
-          (swap! region-cache assoc k r)
-          r))))
+        (when-let [^Texture t (@sheets sheet-key)]
+          (let [r (TextureRegion. t
+                                  (int (* (long col) sprite-size))
+                                  (int (* (long row) sprite-size))
+                                  (int sprite-size) (int sprite-size))]
+            (swap! region-cache assoc k r)
+            r)))))
 
 (defn- image-region
   "Cached full-texture TextureRegion for a loaded image path, or nil if the path
