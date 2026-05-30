@@ -28,7 +28,7 @@
    sim.defs/::thing-entry's opt-keys — a content key absent here is silently
    dropped at construction (acceptable at small scale; derive one from the other
    when thing-defs proliferate)."
-  [:kind :ticker-type :move-ticks :needs :material :traits :skills])
+  [:kind :ticker-type :move-ticks :needs :material :traits :skills :graphic])
 
 (defn make-thing
   "Construct an entity instance of thing-def `def-id` at [x y]. Reads the

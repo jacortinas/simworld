@@ -7,8 +7,8 @@
 ;; keyword referencing the orthogonal materials.edn stuff table (weight, etc.).
 {:colonist {:kind :pawn :ticker-type :never :move-ticks 15
             :needs {:food 1.0 :rest 1.0 :recreation 1.0}
-            :traits #{} :skills {}}
- :tree     {:kind :tree :ticker-type :never}
- :wood     {:kind :item :ticker-type :long :material :wood}
- :food     {:kind :item :ticker-type :long :material :food}
- :stone    {:kind :item :ticker-type :long :material :stone}}
+            :traits #{} :skills {} :graphic :colonist}
+ :tree     {:kind :tree :ticker-type :never :graphic :tree}
+ :wood     {:kind :item :ticker-type :long :material :wood  :graphic :wood}
+ :food     {:kind :item :ticker-type :long :material :food  :graphic :apple}
+ :stone    {:kind :item :ticker-type :long :material :stone :graphic :rock}}

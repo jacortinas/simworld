@@ -77,3 +77,12 @@
       (is (contains? p :carrying))))
   (testing "make-item yields an item with :carried-by scaffolding"
     (is (contains? (entity/make-item :stone [0 0]) :carried-by))))
+
+(deftest make-thing-copies-the-graphic-ref
+  (testing "a constructed pawn carries its thing-def's :graphic id"
+    (is (= :colonist (:graphic (entity/make-pawn "Riker" [0 0])))))
+  (testing "items copy their own graphic, independent of material"
+    (is (= :apple (:graphic (entity/make-item :food [1 1]))))
+    (is (= :rock  (:graphic (entity/make-item :stone [1 1])))))
+  (testing "a tree carries the tree graphic"
+    (is (= :tree (:graphic (entity/make-tree [2 2]))))))
