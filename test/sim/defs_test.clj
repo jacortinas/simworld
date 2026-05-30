@@ -3,10 +3,12 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [sim.defs     :as defs]))
 
-;; Reload the bundled defs before each test so the shared global registry is
-;; always in a known full state regardless of test order (some tests load
-;; alternate sources).
-(use-fixtures :each (fn [t] (defs/load!) (t)))
+;; Reload the bundled defs before AND after each test: before so the shared
+;; global registry is full regardless of order; after so a test that swapped in
+;; alternate sources (load-sources!) can't leave it partial for a sibling ns
+;; whose entities construct via sim.entity/make-thing (which fails fast on a
+;; missing def).
+(use-fixtures :each (fn [t] (defs/load!) (t) (defs/load!)))
 
 (deftest terrain-lookup-returns-entry
   (testing "a known terrain resolves to its def"

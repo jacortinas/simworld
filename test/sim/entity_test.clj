@@ -1,8 +1,14 @@
 (ns sim.entity-test
   (:require
-   [clojure.test :refer [deftest is testing]]
-   [sim.entity :as entity]
+   [clojure.test :refer [deftest is testing use-fixtures]]
+   [sim.defs     :as defs]
+   [sim.entity   :as entity]
    [sim.schedule :as schedule]))
+
+;; make-* now reads thing-defs from the shared global registry; reload the
+;; bundled defs before each test so a sibling ns swapping in alternate sources
+;; can't leave the registry partial. Mirrors sim.defs-test's fixture.
+(use-fixtures :each (fn [t] (defs/load!) (t)))
 
 (deftest make-tree-shape
   (testing "a tree is a :tree kind entity at a position"
@@ -38,3 +44,36 @@
                    (entity/add-entity item))
           w'   (entity/remove-entity w (:id item))]
       (is (empty? (get-in w' [:schedule :long (schedule/home-bucket (:id item) 1000)]))))))
+
+(deftest make-thing-stamps-def-backref-and-template
+  (testing "a constructed pawn carries its :def back-ref and the template content"
+    (let [p (entity/make-thing :colonist [3 4])]
+      (is (= :colonist (:def p)))
+      (is (= :pawn (:kind p)))
+      (is (= :never (:ticker-type p)))
+      (is (= 15 (:move-ticks p)))
+      (is (= {:food 1.0 :rest 1.0 :recreation 1.0} (:needs p)))
+      (is (= [3 4] (:pos p)))
+      (is (some? (:id p)))))
+  (testing "an item thing copies its material from the def"
+    (let [w (entity/make-thing :wood [1 1])]
+      (is (= :item (:kind w)))
+      (is (= :long (:ticker-type w)))
+      (is (= :wood (:material w)))
+      (is (= :wood (:def w))))))
+
+(deftest make-thing-throws-on-unknown-def
+  (testing "constructing an undefined type fails fast (no silent fallback)"
+    (is (thrown-with-msg? clojure.lang.ExceptionInfo #"Unknown thing-def"
+                          (entity/make-thing :no-such-type [0 0])))))
+
+(deftest wrappers-preserve-entity-shape
+  (testing "make-pawn yields a named pawn with runtime scaffolding"
+    (let [p (entity/make-pawn "Riker" [2 2])]
+      (is (= :pawn (:kind p)))
+      (is (= "Riker" (:name p)))
+      (is (= :colonist (:def p)))
+      (is (contains? p :job))
+      (is (contains? p :carrying))))
+  (testing "make-item yields an item with :carried-by scaffolding"
+    (is (contains? (entity/make-item :stone [0 0]) :carried-by))))

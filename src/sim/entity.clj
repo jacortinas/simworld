@@ -11,6 +11,7 @@
    rare/long bucket index. add-entity/remove-entity are the lifecycle
    chokepoint that keeps that index in sync — see sim.schedule."
   (:require
+   [sim.defs     :as defs]
    [sim.schedule :as schedule]))
 
 (set! *warn-on-reflection* true)
@@ -19,61 +20,66 @@
 
 (defn- next-id! [] (swap! id-counter inc))
 
-(defn make-pawn
-  "Construct a new pawn at the given [x y]. Pure — does NOT insert into the world.
-   Use `sim.world/spawn-pawn` for that."
-  [name [x y]]
-  {:id          (next-id!)
-   :kind        :pawn
-   :ticker-type :never  ; ticked every tick by normal systems; needs/idle work
-                        ; self-throttles via schedule/due?, so not bucketed
-   :name        name
-   :pos         [x y]
-   :needs       {:food 1.0 :rest 1.0 :recreation 1.0}
-   :traits      #{}
-   :skills      {}
-   :job         nil
-   :carrying    nil
-   ;; Base ticks to cross one cardinal grass cell (move-cost 1.0). Terrain and
-   ;; diagonals scale this in sim.job/segment-cost. At 30 Hz, 15 ≈ 0.5 s/cell.
-   ;; Hardcoded for now; a future per-pawn speed stat is just a multiplier.
-   :move-ticks  15})
+(def ^:private template-keys
+  "Thing-def keys copied verbatim onto a constructed entity (construction-time
+   content — designer-tunable). Engine fields (:id/:def/:pos) and runtime
+   scaffolding (:job/:carrying/:carried-by, added by the typed wrappers) are NOT
+   here: content and mechanism never mix in one map. Keep in sync with
+   sim.defs/::thing-entry's opt-keys — a content key absent here is silently
+   dropped at construction (acceptable at small scale; derive one from the other
+   when thing-defs proliferate)."
+  [:kind :ticker-type :move-ticks :needs :material :traits :skills])
+
+(defn make-thing
+  "Construct an entity instance of thing-def `def-id` at [x y]. Reads the
+   immutable def for construction-time content (kind, ticker-type, needs,
+   move-ticks, material, traits, skills) and stamps the engine fields (id, :def
+   back-ref, pos). Pure — does NOT insert into the world (use sim.world/spawn-pawn
+   or sim.entity/add-entity).
+
+   Throws if `def-id` is unknown: constructing an undefined type is a caller bug,
+   not a degraded runtime reference (contrast defs/terrain, which falls back to
+   grass). This fail-fast asymmetry is what makes construction-time def reads
+   safe — a silent fallback would spawn the wrong entity."
+  [def-id [x y]]
+  (let [d (or (defs/thing def-id)
+              (throw (ex-info (str "Unknown thing-def: " def-id) {:def-id def-id})))]
+    (-> (select-keys d template-keys)
+        (assoc :id (next-id!) :def def-id :pos [x y]))))
 
 ;; ---------------------------------------------------------------------------
-;; Items
+;; Typed constructors — thin wrappers over make-thing. They add only runtime
+;; scaffolding (never content): a pawn starts with no job and carries nothing;
+;; a ground item is carried by no one.
 ;;
-;; An item lives at `:pos [x y]` while on the ground. When picked up by a
-;; pawn, its `:pos` becomes nil and `:carried-by` is the pawn's id; the
-;; pawn's `:carrying` is the item's id. Drop reverses both.
+;; An item lives at `:pos [x y]` while on the ground. On pickup its `:pos`
+;; becomes nil and `:carried-by` is the pawn's id; the pawn's `:carrying` is the
+;; item's id; drop reverses both. The item stores only its `:material` keyword
+;; (copied from the thing-def); the material DEFS (weight/char) are content in
+;; sim.defs (resources/defs/materials.edn), resolved at use time.
 ;; ---------------------------------------------------------------------------
 
-;; Material DEFS (weight / char) are content — they live in sim.defs
-;; (resources/defs/materials.edn). An item stores only its :material keyword;
-;; the def is resolved via sim.defs/material at use time.
+(defn make-pawn
+  "Construct a new pawn (the :colonist thing-def) named `name` at [x y].
+   Pure — does NOT insert into the world. Use `sim.world/spawn-pawn` for that."
+  [name pos]
+  (-> (make-thing :colonist pos)
+      (assoc :name name :job nil :carrying nil)))
 
 (defn make-item
-  "Construct an item of the given material at [x y]."
-  [material [x y]]
-  {:id          (next-id!)
-   :kind        :item
-   :ticker-type :long  ; deterioration is long-band (stub for now)
-   :material    material
-   :pos         [x y]
-   :carried-by  nil})
+  "Construct an item of thing-def `def-id` at [x y]. `def-id` is the item
+   thing-def id (== material keyword for the current 1:1 content:
+   :wood/:food/:stone)."
+  [def-id pos]
+  (assoc (make-thing def-id pos) :carried-by nil))
 
-;; ---------------------------------------------------------------------------
-;; Trees — passable flora. A* reads only terrain, so trees never affect
+;; Trees are passable flora — A* reads only terrain, so they never affect
 ;; pathfinding (RimWorld's model: walk through, chop later). Inert until a
 ;; future chop job; rendered now.
-;; ---------------------------------------------------------------------------
-
 (defn make-tree
-  "Construct a tree entity at [x y]. Pure — does NOT insert into the world."
-  [[x y]]
-  {:id          (next-id!)
-   :kind        :tree
-   :ticker-type :never  ; inert until a growth/chop system exists
-   :pos         [x y]})
+  "Construct a tree (the :tree thing-def) at [x y]. Pure — does NOT insert."
+  [pos]
+  (make-thing :tree pos))
 
 ;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
