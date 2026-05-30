@@ -204,7 +204,9 @@ world key.
 ## Out of scope / future (seams left)
 
 - **Thing-defs for ticker-type + starting-needs** (construction-time content) —
-  deferred to avoid the defs-before-entities load-order coupling.
+  RESOLVED in `2026-05-29-thing-defs-design.md`: the `:thing` def category +
+  `sim.entity/make-thing`. The load-order coupling was a non-issue (the require
+  graph loads `sim.defs` before any construction).
 - **Mod-merge beyond plain `merge`** and **def inheritance / XPath
   PatchOperations** — the `load!` source-sequence seam is left; the machinery is
   not built.
