@@ -208,9 +208,11 @@
         (entity/pawns @world/world)))
 
 (defn spawn-item!
-  "Drop a new item of `material` on the ground at [x y]. Returns the item."
-  [material pos]
-  (let [item (entity/make-item material pos)]
+  "Drop a new item of thing-def `def-id` on the ground at [x y]. `def-id` is the
+   item thing-def id (== material keyword for the 1:1 content: :wood/:food/:stone).
+   Returns the item."
+  [def-id pos]
+  (let [item (entity/make-item def-id pos)]
     (swap! world/world entity/add-entity item)
     item))
 
