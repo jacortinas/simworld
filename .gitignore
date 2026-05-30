@@ -21,3 +21,7 @@ flamegraphs/
 # OS
 .DS_Store
 Thumbs.db
+
+# Personal planning scratch. Design specs stay tracked under
+# docs/superpowers/specs/; implementation plans are personal and live here.
+.context/

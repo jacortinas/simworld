@@ -463,6 +463,14 @@ old compiled loop body until `start!` respawns it.
 - `dev/user.clj` — REPL helpers (`go!`/`halt!`/`restart!`, `status`,
   spawn-*, assign-*, log, `debug!`, etc.)
 
+## Planning docs convention
+
+Design **specs** are tracked in `docs/superpowers/specs/` (durable rationale,
+referenced throughout this file). Implementation **plans** are personal and
+gitignored under `.context/plans/` (as of 2026-05-30). The eight plans still in
+`docs/superpowers/plans/` are tracked legacy, left as-is. New plans: write to
+`.context/plans/`, never track them.
+
 ## Output style preference
 
 The user is on mobile and prefers learning-mode responses with `★ Insight`
