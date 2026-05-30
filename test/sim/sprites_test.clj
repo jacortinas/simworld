@@ -1,16 +1,11 @@
 (ns sim.sprites-test
-  "Validates the sprite-sheet mappings against the real 32rogues files —
-   without a GL context. This is the headless safety net for rendering: it
-   catches a wrong/out-of-range cell, a missing terrain mapping, or the asset
-   path failing to resolve, none of which the compiler would flag.
-
-   Run from the project dir (`sim/`), same as the game launches — the relative
-   `32rogues/...` path is exactly what sim.render.sprites uses at runtime, so
-   a green test also proves that path resolves."
+  "Headless safety net for rendering content: validates graphics.edn against the
+   real assets without a GL context. Image files resolve, sheet cells are in
+   bounds, and every terrain/thing references a known graphic. Run from sim/, the
+   same working dir the game launches from."
   (:require
    [clojure.test :refer [deftest is testing]]
    [clojure.java.io :as io]
-   [sim.render.sprites :as sprites]
    [sim.defs :as defs]))
 
 (def ^:private sheet-files
@@ -39,37 +34,33 @@
 (deftest sheets-exist-and-match-expected-grid
   (doseq [[k path] sheet-files]
     (testing (name k)
-      (is (.exists (io/file path))
-          (str path " not found — run tests from sim/"))
+      (is (.exists (io/file path)) (str path " not found, run tests from sim/"))
       (let [[w h] (png-dims path)]
         (is (= [(quot w 32) (quot h 32)] (expected-grid k))
             "PNG grid dims should match the expected cell grid")))))
 
-(deftest every-terrain-type-has-a-sprite
+(deftest graphic-image-files-exist
+  (doseq [id (defs/ids :graphic)
+          :let [g (defs/graphic id)]
+          path (keep :image (cons g (vals (:facings g))))]
+    (is (.exists (io/file path)) (str "graphic " id " image missing: " path))))
+
+(deftest graphic-cells-are-in-bounds
+  (doseq [id (defs/ids :graphic)
+          :let [g (defs/graphic id)]
+          src  (cons g (vals (:facings g)))
+          :when (:cell src)
+          :let [[sheet c r] (:cell src)
+                [cols rows] (expected-grid sheet)]]
+    (testing (str "graphic " id " on sheet " sheet)
+      (is (some? (expected-grid sheet)) (str "unknown sheet " sheet))
+      (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
+      (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows))))))
+
+(deftest every-terrain-and-thing-references-a-known-graphic
   (doseq [k (defs/ids :terrain)]
-    (is (contains? sprites/terrain->cell k)
-        (str "terrain " k " has no sprite cell — would fall back to grass"))))
-
-(deftest mapped-cells-are-in-bounds
-  (doseq [[k [sheet c r]] sprites/terrain->cell]
-    (let [[cols rows] (expected-grid sheet)]
-      (testing (str "terrain " (name k) " on sheet " (name sheet))
-        (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
-        (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows))))))
-  (let [[rc rr] (expected-grid :rogues)
-        [c r]   @#'sprites/pawn-cell]
-    (testing "pawn cell"
-      (is (and (<= 0 c) (< c rc)) (str "col " c " out of 0.." (dec rc)))
-      (is (and (<= 0 r) (< r rr)) (str "row " r " out of 0.." (dec rr))))))
-
-(deftest every-item-material-has-a-sprite
-  (doseq [m (defs/ids :material)]
-    (is (contains? sprites/material->cell m)
-        (str "item material " m " has no sprite cell"))))
-
-(deftest item-cells-in-bounds
-  (doseq [[m [sheet c r]] sprites/material->cell]
-    (let [[cols rows] (expected-grid sheet)]
-      (testing (str "item " (name m) " on sheet " (name sheet))
-        (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
-        (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows)))))))
+    (let [gid (:graphic (defs/terrain k))]
+      (is (some? (defs/graphic gid)) (str "terrain " k " -> unknown graphic " gid))))
+  (doseq [k (defs/ids :thing)]
+    (let [gid (:graphic (defs/thing k))]
+      (is (some? (defs/graphic gid)) (str "thing " k " -> unknown graphic " gid)))))

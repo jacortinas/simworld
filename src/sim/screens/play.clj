@@ -41,9 +41,10 @@
            tile-size
            world]}]
   (let [cam    (ui/camera)
-        ;; Wall-clock stamp for this frame — drives real-time sprite animation
-        ;; (sim.render.anim). On real-time, NOT the sim clock, so water ripples
-        ;; while paused; captured once so all animated tiles share one frame.
+        ;; Wall-clock stamp for this frame: drives real-time sprite animation
+        ;; (graphic-region, sim.render.graphic/frame). On real-time, NOT the sim
+        ;; clock, so water ripples while paused; captured once so all animated
+        ;; tiles share one frame.
         now-ms (System/currentTimeMillis)]
     ;; --- Sync world cam from ui-state data, then draw world layers ---
     (.set (.position world-cam) (float (:x cam)) (float (:y cam)) (float 0.0))

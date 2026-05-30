@@ -104,14 +104,15 @@
           r))))
 
 (defn- image-region
-  "Cached full-texture TextureRegion for a loaded image path."
+  "Cached full-texture TextureRegion for a loaded image path, or nil if the path
+   was not loaded (degrade, matching graphic-region's contract)."
   ^TextureRegion [path]
   (let [k [:image path]]
     (or (@region-cache k)
-        (let [^Texture t (@images path)
-              r (TextureRegion. t)]
-          (swap! region-cache assoc k r)
-          r))))
+        (when-let [^Texture t (@images path)]
+          (let [r (TextureRegion. t)]
+            (swap! region-cache assoc k r)
+            r)))))
 
 (defn- flipped
   "A distinct horizontally-flipped copy of `r`, cached by `r`'s identity so the
@@ -143,42 +144,3 @@
     (when base
       (if flip? (flipped base) base))))
 
-;; --- lookup tables: terrain keyword -> [sheet col row] (see 32rogues/*.txt) ---
-;; Ground uses the "(no bg)" detail cells (transparent — the layer paints the
-;; terrain :color base behind them); :water uses the real water tile on the
-;; animated sheet (static frame 1). Same [sheet col row] shape as material->cell.
-(def terrain->cell
-  {:grass  [:tiles    4 7]    ; 8.e  grass 1 (no bg)
-   :dirt   [:tiles    4 8]    ; 9.e  dirt 1 (no bg)
-   :gravel [:tiles    4 9]    ; 10.e stone floor 1 (no bg)
-   :stone  [:tiles    0 1]    ; 2.a  rough stone wall (top)
-   :water  [:animated 0 10]   ; animated row 11 "water waves", frame 1
-   :wall   [:tiles    0 2]})  ; 3.a  stone brick wall (top)
-
-(def ^:private pawn-cell [1 6])   ; rogues 7.b farmer (scythe)
-
-;; Terrain regions are resolved via sim.render.anim/terrain-cell (which adds the
-;; time dimension for animated terrain) + this ns's `region`; there is no static
-;; terrain-region helper — the layer composes the two so animation is uniform.
-
-(defn pawn-region ^TextureRegion []
-  (region :rogues (pawn-cell 0) (pawn-cell 1)))
-
-(def ^:private tree-cell [2 25])  ; tiles 26.c tree
-
-(defn tree-region ^TextureRegion []
-  (region :tiles (tree-cell 0) (tree-cell 1)))
-
-;; --- item material -> [sheet col row] (cells span two sheets) ---
-;; Material items read best from the tiles sheet's object rows (logs, rock);
-;; food comes from the items sheet. See 32rogues/tiles.txt + items.txt.
-(def material->cell
-  {:wood  [:tiles 6 17]    ; tiles 18.g log pile
-   :stone [:tiles 0 18]    ; tiles 19.a large rock 1
-   :food  [:items 2 25]})  ; items 26.c apple
-
-(defn item-region
-  "Sprite region for an item material; falls back to the stone cell."
-  ^TextureRegion [material]
-  (let [[sheet c r] (material->cell material (material->cell :stone))]
-    (region sheet c r)))
