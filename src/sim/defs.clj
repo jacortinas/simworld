@@ -38,11 +38,22 @@
 (s/def ::material-entry (s/keys :opt-un [::weight ::char]))
 (s/def ::need-entry     (s/keys :req-un [::decay] :opt-un [::seek-below]))
 
+(s/def ::kind        keyword?)                 ; open: adding :building is a data edit
+(s/def ::ticker-type #{:never :rare :long})    ; closed: the scheduler's bands
+(s/def ::move-ticks  (s/and number? pos?))
+(s/def ::needs       (s/map-of keyword? (s/and number? #(<= 0.0 (double %) 1.0))))
+(s/def ::material    keyword?)                 ; item thing-def -> materials.edn stuff ref
+(s/def ::traits      (s/coll-of keyword? :kind set?))
+(s/def ::skills      (s/map-of keyword? number?))
+(s/def ::thing-entry (s/keys :req-un [::kind ::ticker-type]
+                             :opt-un [::move-ticks ::needs ::material ::traits ::skills]))
+
 (def ^:private entry-spec
   "Category -> the spec each of its entries must satisfy."
   {:terrain  ::terrain-entry
    :material ::material-entry
-   :need     ::need-entry})
+   :need     ::need-entry
+   :thing    ::thing-entry})
 
 ;; ---------------------------------------------------------------------------
 ;; Default content sources. Category -> ordered resource paths; later files win
@@ -52,7 +63,8 @@
 (def default-sources
   {:terrain  ["defs/terrain.edn"]
    :material ["defs/materials.edn"]
-   :need     ["defs/needs.edn"]})
+   :need     ["defs/needs.edn"]
+   :thing    ["defs/things.edn"]})
 
 (def ^:const ^:private default-decay
   "Fallback decay rate for a need lacking a def (keeps decay graceful, never 0)."
@@ -150,6 +162,14 @@
   "Decay-per-rare-tick for need `k`; falls back to the default rate."
   ^double [k]
   (double (:decay (need k) default-decay)))
+
+(defn thing
+  "Thing-def (construction template) for type `k`, or nil. Unlike the terrain/
+   material use-time lookups (which fall back), a nil here means an undefined
+   type: callers that CONSTRUCT from a def-id treat it as an error — see
+   sim.entity/make-thing's fail-fast."
+  [k]
+  (get-in @db [:thing k]))
 
 ;; ---------------------------------------------------------------------------
 ;; Populate at load. Define-before-use: everything above must exist first
