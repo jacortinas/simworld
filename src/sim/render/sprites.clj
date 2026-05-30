@@ -3,15 +3,16 @@
 
    Each sheet (`32rogues/*.png`) is a grid of 32px cells. We:
      1. PRELOAD each sheet as a GPU `Texture` once (on the GL thread, from
-        gdx `create`) — uploading to the GPU mid-frame would stutter.
-     2. Slice cells into `TextureRegion`s on demand and CACHE them — a region
+        gdx `create`), because uploading to the GPU mid-frame would stutter.
+     2. Slice cells into `TextureRegion`s on demand and CACHE them: a region
         is just (texture + source rect), cheap, but we still cache to avoid
         allocating one per tile per frame.
 
    Cell coords are 0-based [col row]. The sibling `.txt` files map the
-   tileset's `<row>.<letter>` labels to contents (row 1-indexed, a=col 0);
-   the lookup tables below were transcribed from them — see 32rogues/tiles.txt
-   and 32rogues/rogues.txt.
+   tileset's `<row>.<letter>` labels to contents (row 1-indexed, a=col 0).
+   The cell refs now live in resources/defs/graphics.edn (the lookup tables
+   that used to sit here were transcribed from 32rogues/tiles.txt and
+   32rogues/rogues.txt).
 
    Asset path note: `Gdx.files.internal` resolves relative to the working
    directory on desktop, and we always launch from `sim/` (where deps.edn

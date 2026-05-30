@@ -50,12 +50,13 @@
           :let [g (defs/graphic id)]
           src  (cons g (vals (:facings g)))
           :when (:cell src)
-          :let [[sheet c r] (:cell src)
-                [cols rows] (expected-grid sheet)]]
+          :let [[sheet c r] (:cell src)]]
     (testing (str "graphic " id " on sheet " sheet)
-      (is (some? (expected-grid sheet)) (str "unknown sheet " sheet))
-      (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
-      (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows))))))
+      (if-let [[cols rows] (expected-grid sheet)]
+        (do
+          (is (and (<= 0 c) (< c cols)) (str "col " c " out of 0.." (dec cols)))
+          (is (and (<= 0 r) (< r rows)) (str "row " r " out of 0.." (dec rows))))
+        (is false (str "unknown sheet " sheet))))))
 
 (deftest every-terrain-and-thing-references-a-known-graphic
   (doseq [k (defs/ids :terrain)]
