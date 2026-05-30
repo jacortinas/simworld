@@ -39,7 +39,8 @@
       (is (contains? db :terrain))
       (is (contains? db :material))
       (is (contains? db :need))
-      (is (contains? db :thing)))))
+      (is (contains? db :thing))
+      (is (contains? db :graphic)))))
 
 (deftest load-rejects-malformed-entry
   (testing "a terrain entry with a non-boolean :passable? throws a useful message"
@@ -113,3 +114,35 @@
     (is (thrown-with-msg?
          clojure.lang.ExceptionInfo #"(?i)kind"
          (defs/load-sources! {:thing [{:bad {:ticker-type :never}}]})))))
+
+(deftest graphic-lookup-returns-entry
+  (testing "an image-source graphic resolves to its entry"
+    (is (= "graphics/colonist.png" (:image (defs/graphic :colonist))))
+    (is (true? (:directional (defs/graphic :colonist)))))
+  (testing "the animated water graphic carries a cell source and anim data"
+    (is (= [:animated 0 10] (:cell (defs/graphic :water))))
+    (is (= {:frames 11 :fps 6} (:anim (defs/graphic :water)))))
+  (testing "an unknown graphic is nil (the render path degrades, never throws)"
+    (is (nil? (defs/graphic :no-such-graphic)))))
+
+(deftest graphics-load-and-validate
+  (testing "the bundled registry includes the :graphic category"
+    (is (contains? (defs/load!) :graphic)))
+  (testing "every shipped graphic id is present"
+    (is (= #{:grass :dirt :gravel :stone :wall :water
+             :colonist :tree :wood :rock :apple}
+           (defs/ids :graphic)))))
+
+(deftest load-rejects-malformed-graphic-entry
+  (testing "a graphic with both :cell and :image fails (exactly one source)"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)graphic"
+         (defs/load-sources! {:graphic [{:bad {:cell [:tiles 0 0] :image "x.png"}}]}))))
+  (testing "a graphic with neither source fails"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)graphic"
+         (defs/load-sources! {:graphic [{:bad {:draw-size [1 1]}}]}))))
+  (testing "a non-positive :draw-size fails"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)graphic"
+         (defs/load-sources! {:graphic [{:bad {:image "x.png" :draw-size [0 1]}}]})))))

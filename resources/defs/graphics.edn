@@ -1,0 +1,18 @@
+;; Graphic defs, loaded by sim.defs into (:graphic db). Content, not code.
+;; A graphic names ONE base source: a sheet :cell [sheet col row] (water keeps
+;; this, with :anim) or an :image path to a loose PNG (everything else, sliced
+;; from 32rogues by dev/tools/slice_sprites.clj). Optional :draw-size/:draw-offset
+;; (tile units, default [1 1]/[0 0]) decouple sprite size from the tile footprint.
+;; :directional marks a pawn-style Graphic_Multi; :facings (absent for now)
+;; overrides per direction, with :right defaulting to a horizontal flip of :left.
+{:grass    {:image "graphics/grass.png"}
+ :dirt     {:image "graphics/dirt.png"}
+ :gravel   {:image "graphics/gravel.png"}
+ :stone    {:image "graphics/stone.png"}
+ :wall     {:image "graphics/wall.png"}
+ :water    {:cell [:animated 0 10] :anim {:frames 11 :fps 6}}
+ :colonist {:image "graphics/colonist.png" :directional true}
+ :tree     {:image "graphics/tree.png"}
+ :wood     {:image "graphics/wood.png"}
+ :rock     {:image "graphics/rock.png"}
+ :apple    {:image "graphics/apple.png"}}

@@ -34,7 +34,7 @@
 (s/def ::color (s/coll-of (s/and number? #(<= 0.0 (double %) 1.0))
                           :kind vector? :count 3))
 
-(s/def ::terrain-entry  (s/keys :req-un [::move-cost ::passable?] :opt-un [::char ::color]))
+(s/def ::terrain-entry  (s/keys :req-un [::move-cost ::passable?] :opt-un [::char ::color ::graphic]))
 (s/def ::material-entry (s/keys :opt-un [::weight ::char]))
 (s/def ::need-entry     (s/keys :req-un [::decay] :opt-un [::seek-below]))
 
@@ -46,14 +46,37 @@
 (s/def ::traits      (s/coll-of keyword? :kind set?))
 (s/def ::skills      (s/map-of keyword? number?))
 (s/def ::thing-entry (s/keys :req-un [::kind ::ticker-type]
-                             :opt-un [::move-ticks ::needs ::material ::traits ::skills]))
+                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic]))
+
+;; --- graphic defs: sprite selection as content (the render-side axis) ---
+(s/def ::cell        (s/tuple keyword? nat-int? nat-int?))   ; [sheet col row]
+(s/def ::image       string?)
+(s/def ::draw-size   (s/tuple (s/and number? pos?) (s/and number? pos?)))
+(s/def ::draw-offset (s/tuple number? number?))
+(s/def ::frames      (s/and int? pos?))
+(s/def ::fps         (s/and number? pos?))
+(s/def ::anim        (s/keys :req-un [::frames ::fps]))
+(s/def ::directional boolean?)
+(s/def ::graphic     keyword?)                  ; a thing/terrain def's graphic ref
+(s/def ::facing-src  (s/keys :opt-un [::cell ::image]))
+(s/def ::facings     (s/map-of #{:up :down :left :right} ::facing-src))
+
+(defn- one-source?
+  "A graphic names exactly one base source: :cell xor :image."
+  [m] (= 1 (count (keep #(get m %) [:cell :image]))))
+
+(s/def ::graphic-entry
+  (s/and (s/keys :opt-un [::cell ::image ::draw-size ::draw-offset
+                          ::anim ::directional ::facings])
+         one-source?))
 
 (def ^:private entry-spec
   "Category -> the spec each of its entries must satisfy."
   {:terrain  ::terrain-entry
    :material ::material-entry
    :need     ::need-entry
-   :thing    ::thing-entry})
+   :thing    ::thing-entry
+   :graphic  ::graphic-entry})
 
 ;; ---------------------------------------------------------------------------
 ;; Default content sources. Category -> ordered resource paths; later files win
@@ -64,7 +87,8 @@
   {:terrain  ["defs/terrain.edn"]
    :material ["defs/materials.edn"]
    :need     ["defs/needs.edn"]
-   :thing    ["defs/things.edn"]})
+   :thing    ["defs/things.edn"]
+   :graphic  ["defs/graphics.edn"]})
 
 (def ^:const ^:private default-decay
   "Fallback decay rate for a need lacking a def (keeps decay graceful, never 0)."
@@ -166,10 +190,17 @@
 (defn thing
   "Thing-def (construction template) for type `k`, or nil. Unlike the terrain/
    material use-time lookups (which fall back), a nil here means an undefined
-   type: callers that CONSTRUCT from a def-id treat it as an error — see
-   sim.entity/make-thing's fail-fast."
+   type: callers that CONSTRUCT from a def-id treat it as an error (see
+   sim.entity/make-thing's fail-fast)."
   [k]
   (get-in @db [:thing k]))
+
+(defn graphic
+  "Graphic def for `k`, or nil. A use-time render-path read: a missing graphic
+   degrades in the layer (skip / fallback), never crashes (contrast make-thing's
+   construction fail-fast)."
+  [k]
+  (get-in @db [:graphic k]))
 
 ;; ---------------------------------------------------------------------------
 ;; Populate at load. Define-before-use: everything above must exist first
