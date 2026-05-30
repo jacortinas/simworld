@@ -56,9 +56,9 @@
     ;; Stockpile-zone floor overlay + live drag preview: above terrain, below
     ;; flora/items/pawns so stored items show on top of the zone.
     (zones-layer/draw world batch tile-size pixel)
-    (flora-layer/draw world batch tile-size)
-    (items-layer/draw world batch tile-size)
-    (pawns-layer/draw world batch tile-size)
+    (flora-layer/draw world batch tile-size now-ms)
+    (items-layer/draw world batch tile-size now-ms)
+    (pawns-layer/draw world batch tile-size now-ms)
     ;; Selection box: world-space marker around the selected entity's tile (any
     ;; kind), reusing the 1px texture. Before the debug overlay so a debug path
     ;; still draws on top of the box.

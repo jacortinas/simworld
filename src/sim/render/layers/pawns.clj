@@ -1,32 +1,30 @@
 (ns sim.render.layers.pawns
-  "Pawns layer: each pawn drawn as a 32px sprite at its (interpolated) position.
-
-   The draw position comes from sim.render.interp/draw-pos: a settled pawn snaps
-   to its cell, a walking one GLIDES between cells (same Y-flip as terrain). The
-   glide is a render-only float — the sim keeps integer ticks.
-
-   Selection feedback is now the world-space box (sim.render.layers.selection),
-   uniform across all selectable kinds — so pawns always draw untinted. Resets
-   the batch tint to white when done so later draws aren't affected."
+  "Pawns layer: each pawn drawn through its :graphic at its interpolated position,
+   facing derived from its in-flight :move segment (idle faces down). Pawns draw
+   untinted; selection feedback is the world-space box layer."
   (:require
    [sim.entity         :as entity]
+   [sim.defs           :as defs]
+   [sim.render.graphic :as graphic]
    [sim.render.interp  :as interp]
    [sim.render.sprites :as sprites])
   (:import
    (com.badlogic.gdx.graphics Color)
-   (com.badlogic.gdx.graphics.g2d SpriteBatch TextureRegion)))
+   (com.badlogic.gdx.graphics.g2d SpriteBatch)))
 
 (set! *warn-on-reflection* true)
 
 (defn draw
-  "Render pawns in WORLD coordinates, gliding between cells while they walk."
-  [world ^SpriteBatch batch tile-size]
+  [world ^SpriteBatch batch tile-size now-ms]
   (let [height (:height (:grid world))
-        ts     (long tile-size)
-        ^TextureRegion region (sprites/pawn-region)]
+        ts     (long tile-size)]
     (doseq [pawn (entity/pawns world)]
       (when (:pos pawn)
-        (let [[px py] (interp/draw-pos pawn ts height)]
-          (.setColor batch Color/WHITE)
-          (.draw batch region (float px) (float py) (float ts) (float ts)))))
+        (when-let [gr (defs/graphic (:graphic pawn))]
+          (let [facing (graphic/facing-for (get-in pawn [:job :move]))]
+            (when-let [region (sprites/graphic-region gr facing now-ms)]
+              (let [[px py] (interp/draw-pos pawn ts height)
+                    [gx gy gw gh] (graphic/draw-rect gr [px py] ts)]
+                (.setColor batch Color/WHITE)
+                (.draw batch region (float gx) (float gy) (float gw) (float gh))))))))
     (.setColor batch Color/WHITE)))
