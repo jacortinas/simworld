@@ -17,6 +17,9 @@
    directory on desktop, and we always launch from `sim/` (where deps.edn
    lives), so `\"32rogues/...\"` resolves. Move the sheets under resources/ and
    switch to `.classpath` if that ever stops holding."
+  (:require
+   [sim.defs :as defs]
+   [sim.render.graphic :as graphic])
   (:import
    (com.badlogic.gdx Gdx)
    (com.badlogic.gdx.graphics Texture Texture$TextureFilter)
@@ -36,6 +39,30 @@
 ;; their contents against the window's GL-context lifetime.
 (defonce ^:private sheets       (atom {}))   ; sheet-key -> Texture
 (defonce ^:private region-cache (atom {}))   ; [sheet col row] -> TextureRegion
+(defonce ^:private images     (atom {}))   ; image path -> Texture
+(defonce ^:private flip-cache (atom {}))   ; base TextureRegion -> flipped copy
+
+(defn- graphic-image-paths
+  "Every :image path referenced by the loaded graphic defs (top-level + facings)."
+  []
+  (->> (defs/ids :graphic)
+       (map defs/graphic)
+       (mapcat (fn [g] (keep :image (cons g (vals (:facings g))))))
+       distinct))
+
+(defn- load-images!
+  "Load every graphic :image as a Nearest-filtered Texture, cached by path.
+   GL thread only (called from load!)."
+  []
+  (reset! flip-cache {})
+  (reset! images
+          (into {}
+                (map (fn [path]
+                       (let [t (Texture. (.internal (Gdx/files) ^String path))]
+                         (.setFilter t Texture$TextureFilter/Nearest
+                                     Texture$TextureFilter/Nearest)
+                         [path t])))
+                (graphic-image-paths))))
 
 (defn load!
   "Load every sheet as a Texture. MUST run on the GL thread (gdx `create`).
@@ -49,14 +76,18 @@
                          (.setFilter t Texture$TextureFilter/Nearest
                                      Texture$TextureFilter/Nearest)
                          [k t])))
-                sheet-files)))
+                sheet-files))
+  (load-images!))
 
 (defn dispose!
   "Free the GPU textures. Call from gdx `dispose`."
   []
   (doseq [[_ ^Texture t] @sheets] (.dispose t))
   (reset! sheets {})
-  (reset! region-cache {}))
+  (reset! region-cache {})
+  (doseq [[_ ^Texture t] @images] (.dispose t))
+  (reset! images {})
+  (reset! flip-cache {}))
 
 (defn region
   "Cached TextureRegion for cell (col,row) of `sheet-key`. Source pixels are
@@ -71,6 +102,46 @@
                                 (int sprite-size) (int sprite-size))]
           (swap! region-cache assoc k r)
           r))))
+
+(defn- image-region
+  "Cached full-texture TextureRegion for a loaded image path."
+  ^TextureRegion [path]
+  (let [k [:image path]]
+    (or (@region-cache k)
+        (let [^Texture t (@images path)
+              r (TextureRegion. t)]
+          (swap! region-cache assoc k r)
+          r))))
+
+(defn- flipped
+  "A distinct horizontally-flipped copy of `r`, cached by `r`'s identity so the
+   shared source region is never mutated."
+  ^TextureRegion [^TextureRegion r]
+  (or (@flip-cache r)
+      (let [f (doto (TextureRegion. r) (.flip true false))]
+        (swap! flip-cache assoc r f)
+        f)))
+
+(defn graphic-region
+  "TextureRegion to draw for `graphic-def` at `facing` and wall-clock `now-ms`.
+   Resolves the source + flip via sim.render.graphic/source-for, reads pixels from
+   a sheet cell or a loaded image, steps an animated cell's column by time
+   (sim.render.graphic/frame), and mirrors for a derived :right facing. Returns nil
+   if the source can't resolve (the layer degrades). The param is `graphic-def` to
+   avoid shadowing the `graphic` ns alias."
+  ^TextureRegion [graphic-def facing now-ms]
+  (let [[source flip?] (graphic/source-for graphic-def facing)
+        base (cond
+               (:cell source)
+               (let [[sheet col row] (:cell source)
+                     col (if-let [{:keys [frames fps]} (:anim graphic-def)]
+                           (graphic/frame now-ms fps frames)
+                           col)]
+                 (region sheet col row))
+               (:image source)
+               (image-region (:image source)))]
+    (when base
+      (if flip? (flipped base) base))))
 
 ;; --- lookup tables: terrain keyword -> [sheet col row] (see 32rogues/*.txt) ---
 ;; Ground uses the "(no bg)" detail cells (transparent — the layer paints the

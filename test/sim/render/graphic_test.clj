@@ -45,3 +45,20 @@
   (testing "draw-offset shifts the quad in tile units"
     (is (= [80.0 104.0 32.0 32.0]
            (graphic/draw-rect {:draw-offset [0.5 0.25]} [64 96] 32)))))
+
+(deftest frame-steps-and-loops-with-wall-clock
+  (testing "frame floors (now-ms * fps / 1000) then wraps at `frames`"
+    (let [fps 6 n 11]
+      (is (= 0  (graphic/frame 0    fps n)))
+      (is (= 0  (graphic/frame 166  fps n)))
+      (is (= 1  (graphic/frame 167  fps n)))
+      (is (= 6  (graphic/frame 1000 fps n)))
+      (is (= 10 (graphic/frame 1833 fps n)))
+      (is (= 0  (graphic/frame 1834 fps n))))))
+
+(deftest frame-is-always-in-range
+  (testing "result is a valid 0-based column for any wall-clock value"
+    (doseq [now [0 1 999 123456 987654321]
+            [fps n] [[6 11] [1 4] [12 6]]]
+      (let [f (graphic/frame now fps n)]
+        (is (and (<= 0 f) (< f n)))))))

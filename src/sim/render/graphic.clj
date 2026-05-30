@@ -61,3 +61,12 @@
      (+ (double py) (* (double oy) ts))
      (* (double sw) ts)
      (* (double sh) ts)]))
+
+(defn frame
+  "0-based frame index of a `frames`-long loop at `fps`, at wall-clock `now-ms`.
+   Pure real-time animation math: same (now-ms, fps, frames) gives the same frame,
+   so it never perturbs determinism. now-ms is non-negative, so the integer quot
+   floors as intended. sim.render.sprites/graphic-region uses this to step an
+   animated graphic's cell column."
+  [now-ms fps frames]
+  (mod (quot (* (long now-ms) (long fps)) 1000) (long frames)))
