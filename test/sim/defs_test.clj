@@ -3,10 +3,12 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [sim.defs     :as defs]))
 
-;; Reload the bundled defs before each test so the shared global registry is
-;; always in a known full state regardless of test order (some tests load
-;; alternate sources).
-(use-fixtures :each (fn [t] (defs/load!) (t)))
+;; Reload the bundled defs before AND after each test: before so the shared
+;; global registry is full regardless of order; after so a test that swapped in
+;; alternate sources (load-sources!) can't leave it partial for a sibling ns
+;; whose entities construct via sim.entity/make-thing (which fails fast on a
+;; missing def).
+(use-fixtures :each (fn [t] (defs/load!) (t) (defs/load!)))
 
 (deftest terrain-lookup-returns-entry
   (testing "a known terrain resolves to its def"
@@ -31,12 +33,13 @@
     (is (= 0.0125 (defs/need-decay :no-such-need)))))
 
 (deftest shipped-defs-load-and-validate
-  (testing "loading bundled EDN returns a registry with the three categories"
+  (testing "loading bundled EDN returns a registry with the four categories"
     (let [db (defs/load!)]
       (is (map? db))
       (is (contains? db :terrain))
       (is (contains? db :material))
-      (is (contains? db :need)))))
+      (is (contains? db :need))
+      (is (contains? db :thing)))))
 
 (deftest load-rejects-malformed-entry
   (testing "a terrain entry with a non-boolean :passable? throws a useful message"
@@ -81,3 +84,32 @@
          clojure.lang.ExceptionInfo #"(?i)color"
          (defs/load-sources! {:terrain [{:grass {:move-cost 1.0 :passable? true
                                                  :color [2.0 0.0 0.0]}}]})))))
+
+(deftest thing-lookup-returns-construction-template
+  (testing "a known thing-def resolves to its template"
+    (let [c (defs/thing :colonist)]
+      (is (= :pawn (:kind c)))
+      (is (= :never (:ticker-type c)))
+      (is (= 15 (:move-ticks c)))
+      (is (= {:food 1.0 :rest 1.0 :recreation 1.0} (:needs c)))))
+  (testing "an item thing-def references its material orthogonally"
+    (is (= :item (:kind (defs/thing :wood))))
+    (is (= :wood (:material (defs/thing :wood)))))
+  (testing "an unknown thing-def is nil (callers fail-fast at construction)"
+    (is (nil? (defs/thing :no-such-thing)))))
+
+(deftest thing-defs-load-and-validate
+  (testing "the bundled registry includes the :thing category"
+    (is (contains? (defs/load!) :thing)))
+  (testing "ids enumerates every shipped thing type"
+    (is (= #{:colonist :tree :wood :food :stone} (defs/ids :thing)))))
+
+(deftest load-rejects-malformed-thing-entry
+  (testing "an unknown :ticker-type throws (the band set is closed)"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)ticker"
+         (defs/load-sources! {:thing [{:colonist {:kind :pawn :ticker-type :sometimes}}]}))))
+  (testing "a missing required :kind throws"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)kind"
+         (defs/load-sources! {:thing [{:bad {:ticker-type :never}}]})))))

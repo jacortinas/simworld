@@ -1,0 +1,14 @@
+;; Thing-defs — loaded by sim.defs into (:thing db). Content, not code.
+;; A thing-def is a CONSTRUCTION TEMPLATE for an entity TYPE (RimWorld's
+;; ThingDef): an entity instance references its type by :def and copies these
+;; construction-time defaults at sim.entity/make-thing time. :kind is the cheap
+;; category axis (:pawn/:item/:tree) the entity queries filter on; :ticker-type
+;; is the scheduler band (:never/:rare/:long). Item types carry a :material
+;; keyword referencing the orthogonal materials.edn stuff table (weight, etc.).
+{:colonist {:kind :pawn :ticker-type :never :move-ticks 15
+            :needs {:food 1.0 :rest 1.0 :recreation 1.0}
+            :traits #{} :skills {}}
+ :tree     {:kind :tree :ticker-type :never}
+ :wood     {:kind :item :ticker-type :long :material :wood}
+ :food     {:kind :item :ticker-type :long :material :food}
+ :stone    {:kind :item :ticker-type :long :material :stone}}

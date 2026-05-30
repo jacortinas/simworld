@@ -135,10 +135,16 @@ namespaces (the directory rename happened early — never use `colony.*`).
   zero cyclic-graph pain. Migrated content (use-time reads only): terrain
   (`sim.tile` wrappers delegate to `defs/terrain`), materials (`defs/material`),
   need-decay rates (`defs/need-decay`). Lookups have a graceful fallback (unknown
-  terrain → grass), so a dangling reference degrades, not crashes. **Seam left:**
-  construction-time content (pawn starting `:needs`, `:ticker-type` defaults) is
-  still hard-coded in `make-*` — making it def-driven would force a
-  defs-before-entities load order, so it waits for a thing-def step.
+  terrain → grass), so a dangling reference degrades, not crashes. **Seam closed
+  (was "Seam left"):** construction-time content (pawn starting `:needs`,
+  `:ticker-type`, `:move-ticks`) is now def-driven via the `:thing` category
+  (`resources/defs/things.edn`): `sim.entity/make-thing` reads a per-type
+  template and the `make-*` constructors are thin wrappers. The feared
+  defs-before-entities load-order coupling was a non-issue — `sim.defs` depends on
+  nothing in `sim`, so the require graph loads defs before any construction
+  (`sim.entity` → `sim.defs`). Entities carry a `:def` back-ref; construction
+  fails fast on an unknown def-id (use-time lookups still degrade). See
+  `docs/superpowers/specs/2026-05-29-thing-defs-design.md`.
 - **Scheduler, not a uniform tick.** `tick` = `advance-clock → schedule/run`.
   Per-tick work is registered band systems (`schedule/register-system!`), not a
   hand-written pipeline. New periodic work = a system on a band; new bucketed
@@ -396,10 +402,11 @@ old compiled loop body until `start!` respawns it.
 
 - `src/sim/defs.clj` — the Def DB: `defonce` content registry loaded from
   `resources/defs/*.edn` at ns-load, spec-validated. Lookups `terrain`/
-  `material`/`need`/`need-decay`/`ids`; `load!`/`load-sources!` (the mod seam).
+  `material`/`need`/`need-decay`/`thing`/`ids`; `load!`/`load-sources!` (the mod seam).
   NOT in the world; NOT saved.
-- `resources/defs/{terrain,materials,needs}.edn` — game content (move-cost/
-  passable?/char; weight/char; per-need decay). Edit + `(reload-defs!)` to retune.
+- `resources/defs/{terrain,materials,needs,things}.edn` — game content (move-cost/
+  passable?/char; weight/char; per-need decay; per-type construction templates —
+  kind, ticker-type, starting needs, move-ticks, material). Edit + `(reload-defs!)` to retune.
 - `src/sim/world.clj` — the atom + initial-state shape (incl. `:schedule`)
 - `src/sim/simulation.clj` — the pure tick function + band-system defs/registration
 - `src/sim/schedule.clj` — tick-band scheduler: bucket math, the derived bucket
