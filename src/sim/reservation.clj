@@ -11,7 +11,7 @@
 
    This namespace interprets jobs but does NOT depend on sim.job — that keeps
    the graph acyclic (sim.job consults can-reserve? in assign). It depends only
-   on sim.entity. See docs/superpowers/specs/2026-05-25-reservations-design.md."
+   on sim.entity."
   (:require
    [sim.entity :as entity]))
 

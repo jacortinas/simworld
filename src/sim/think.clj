@@ -7,9 +7,7 @@
 
    `deliberate` is pure: (world, pawn) -> job-or-nil. A leaf JobGiver mints a
    job (pure data); `sim.ai/redeliberate` routes it through `sim.job/assign`.
-   Adding a behavior = add a node + register one giver; the walker never changes.
-
-   See docs/superpowers/specs/2026-05-25-think-tree-eat-design.md."
+   Adding a behavior = add a node + register one giver; the walker never changes."
   (:require
    [sim.defs        :as defs]
    [sim.entity      :as entity]
@@ -86,7 +84,7 @@
    to haul or no stockpile exists, so the tree falls through to wander. An item
    already on a stockpile cell is excluded, so a hauled item is never re-picked
    (self-terminating). In RimWorld terms this is the :hauling WorkType's first
-   WorkGiver — see docs/superpowers/specs/2026-05-27-auto-haul-design.md."
+   WorkGiver."
   [world pawn]
   (let [pos   (:pos pawn)
         cells (zone/stockpile-cells world)]

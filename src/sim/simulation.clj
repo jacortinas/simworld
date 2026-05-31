@@ -4,8 +4,7 @@
    `tick` is a PURE function: (tick world) -> new-world. It advances the clock
    then runs the staggered scheduler (sim.schedule), which dispatches the
    registered band systems. Most things do NOT run every tick — only :normal
-   systems do; :rare/:long work runs over the staggered bucket due this tick.
-   See docs/superpowers/specs/2026-05-24-tick-bands-design.md."
+   systems do; :rare/:long work runs over the staggered bucket due this tick."
   (:require
    [sim.ai       :as ai]
    [sim.defs     :as defs]

@@ -143,8 +143,7 @@ namespaces (the directory rename happened early — never use `colony.*`).
   defs-before-entities load-order coupling was a non-issue — `sim.defs` depends on
   nothing in `sim`, so the require graph loads defs before any construction
   (`sim.entity` → `sim.defs`). Entities carry a `:def` back-ref; construction
-  fails fast on an unknown def-id (use-time lookups still degrade). See
-  `docs/superpowers/specs/2026-05-29-thing-defs-design.md`.
+  fails fast on an unknown def-id (use-time lookups still degrade).
 - **Scheduler, not a uniform tick.** `tick` = `advance-clock → schedule/run`.
   Per-tick work is registered band systems (`schedule/register-system!`), not a
   hand-written pipeline. New periodic work = a system on a band; new bucketed
@@ -170,9 +169,7 @@ namespaces (the directory rename happened early — never use `colony.*`).
   hunger threshold is content (`needs.edn :food :seek-below`). NOT yet built: a
   constant/reflex tree for mid-job interrupts, `PrioritySorter` (float-ranked
   children), and a WorkType priority matrix (give-haul re-homes into it as a
-  WorkGiver unchanged). See
-  `docs/superpowers/specs/2026-05-25-think-tree-eat-design.md` and
-  `docs/superpowers/specs/2026-05-27-auto-haul-design.md`.
+  WorkGiver unchanged).
 - **`advance` returns a *world*, not a pawn.** Pickup/drop need to touch
   both the pawn AND the item; returning a world makes that natural. Don't
   revert this — every job since haul depends on it.
@@ -194,8 +191,7 @@ namespaces (the directory rename happened early — never use `colony.*`).
   speed gate in `sim.ai/advance-job` (the old 15-tick `moves-this-tick?`
   complected walk-speed with deliberation cadence — deleted; advance runs every
   tick). `:move`/`:move-ticks` are plain world state, so they save for free; old
-  saves load settled. See `docs/superpowers/specs/2026-05-27-8-directional-
-  movement-design.md`.
+  saves load settled.
 - **Player override pattern.** Player commands set `:priority :forced
   :source :player` on the job (the `job/forced-by-player` override). Auto-
   assignment later will check these.
@@ -213,7 +209,7 @@ namespaces (the directory rename happened early — never use `colony.*`).
   future building-placement tool reuses; only the "what to create" differs
   (`sim.zone/add-stockpile` filters to in-bounds/passable/unzoned cells). Pure
   model + geometry are headless-tested; the input-proxy drag and the GL fill are
-  the untested edges. See `docs/superpowers/specs/2026-05-25-stockpile-zoning-design.md`.
+  the untested edges.
 - **Selection is broader than commands.** `:selected` holds ANY selectable
   entity id (pawn/item/tree), set by left-click cycle-select. But verbs are
   kind-gated: `right-click!` only orders pawns — a non-pawn selection is
@@ -241,7 +237,7 @@ namespaces (the directory rename happened early — never use `colony.*`).
   write-analysis). The future parallel-assignment path is propose→reconcile over
   `claimant`, NOT lock-based CAS (which would be non-deterministic). `sim.reservation`
   depends only on `sim.entity` (it interprets jobs but never requires `sim.job`,
-  keeping the graph acyclic). See `docs/superpowers/specs/2026-05-25-reservations-design.md`.
+  keeping the graph acyclic).
 - **Render layers are pure projections.** A layer = `(draw world batch)`.
   Compositor walks them in order. Z-order replaces ASCII precedence as
   the "what shows on top" mechanic.
@@ -465,11 +461,11 @@ old compiled loop body until `start!` respawns it.
 
 ## Planning docs convention
 
-Design **specs** are tracked in `docs/superpowers/specs/` (durable rationale,
-referenced throughout this file). Implementation **plans** are personal and
-gitignored under `.context/plans/` (as of 2026-05-30). The eight plans still in
-`docs/superpowers/plans/` are tracked legacy, left as-is. New plans: write to
-`.context/plans/`, never track them.
+All planning docs are personal and gitignored under `.context/`: design
+**specs** in `.context/specs/`, implementation **plans** in `.context/plans/`.
+None of it is tracked in the repo. The tracked `docs/` holds only durable
+reference material (`rimworld-engine-internals.md`, `screens-design.md`,
+`debug-layer-design.md`, `original-deep-research.md`), never specs or plans.
 
 ## Output style preference
 

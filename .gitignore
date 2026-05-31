@@ -22,6 +22,6 @@ flamegraphs/
 .DS_Store
 Thumbs.db
 
-# Personal planning scratch. Design specs stay tracked under
-# docs/superpowers/specs/; implementation plans are personal and live here.
+# Personal planning scratch: design specs (.context/specs/) and implementation
+# plans (.context/plans/) live here, never tracked. Reference material stays in docs/.
 .context/
