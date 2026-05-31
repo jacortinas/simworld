@@ -23,8 +23,8 @@
    [sim.render.graphic :as graphic])
   (:import
    (com.badlogic.gdx Gdx)
-   (com.badlogic.gdx.graphics Texture Texture$TextureFilter)
-   (com.badlogic.gdx.graphics.g2d TextureRegion)))
+   (com.badlogic.gdx.graphics Color Texture Texture$TextureFilter)
+   (com.badlogic.gdx.graphics.g2d SpriteBatch TextureRegion)))
 
 (set! *warn-on-reflection* true)
 
@@ -145,4 +145,26 @@
                (image-region (:image source)))]
     (when base
       (if flip? (flipped base) base))))
+
+(defn draw-graphic!
+  "Blit the graphic referenced by `graphic-id` at world-pixel anchor [px py],
+   untinted. Resolves the graphic def, its TextureRegion (at `facing` + wall-clock
+   `now-ms`), and the draw-rect, then issues the SpriteBatch draw. A no-op
+   (degrade) when the graphic id or its region can't resolve — the render-path
+   contract every layer shares. `facing` defaults to :down; only a directional
+   graphic reads it (source-for ignores facing otherwise), so non-pawn layers omit
+   it. This is the one blit shared by the terrain/flora/items/pawns layers; it
+   sets the tint to white per draw so a layer can't inherit a stale color.
+
+   GL (the .draw), so it lives on the untested side of the pure-core / GL split —
+   the size/flip/facing math it calls (graphic/draw-rect, source-for) stays pure
+   and headless-tested."
+  ([batch graphic-id anchor tile-size now-ms]
+   (draw-graphic! batch graphic-id anchor tile-size now-ms :down))
+  ([^SpriteBatch batch graphic-id anchor tile-size now-ms facing]
+   (when-let [gr (defs/graphic graphic-id)]
+     (when-let [region (graphic-region gr facing now-ms)]
+       (let [[gx gy gw gh] (graphic/draw-rect gr anchor tile-size)]
+         (.setColor batch Color/WHITE)
+         (.draw batch region (float gx) (float gy) (float gw) (float gh)))))))
 

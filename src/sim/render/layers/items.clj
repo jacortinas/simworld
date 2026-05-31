@@ -1,10 +1,9 @@
 (ns sim.render.layers.items
-  "Items layer: ground items drawn through their :graphic. Carried items
-   (:pos nil) are filtered out."
+  "Items layer: ground items drawn through their :graphic at their tile anchor.
+   Carried items (:pos nil) are filtered out."
   (:require
    [sim.entity :as entity]
-   [sim.defs :as defs]
-   [sim.render.graphic :as graphic]
+   [sim.render.interp :as interp]
    [sim.render.sprites :as sprites])
   (:import
    (com.badlogic.gdx.graphics.g2d SpriteBatch)))
@@ -16,10 +15,6 @@
   (let [height (long (:height (:grid world)))
         ts     (long tile-size)]
     (doseq [item (entity/items world)]
-      (when-let [[x y] (:pos item)]
-        (when-let [gr (defs/graphic (:graphic item))]
-          (when-let [region (sprites/graphic-region gr :down now-ms)]
-            (let [px (* (long x) ts)
-                  py (* (- height (long y) 1) ts)
-                  [gx gy gw gh] (graphic/draw-rect gr [px py] ts)]
-              (.draw batch region (float gx) (float gy) (float gw) (float gh)))))))))
+      (when (:pos item)
+        (sprites/draw-graphic! batch (:graphic item)
+                               (interp/draw-pos item ts height) ts now-ms)))))

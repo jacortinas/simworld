@@ -1,11 +1,12 @@
 (ns sim.render.graphic
-  "Pure render-side resolution for graphic defs. No GL here: sim.render.sprites
+  "Pure render-side helpers for graphic defs. No GL here: sim.render.sprites
    turns a source into a TextureRegion and the layers issue the draw. Headless-
    tested, the same pure-core / untested-GL split as every layer.
 
-   Three concerns: which way a moving pawn faces (facing-for), which source and
-   whether to mirror it (source-for), and the world-pixel quad given the tile-unit
-   draw-size/offset (draw-rect).")
+   Four pure fns: which way a moving pawn faces (facing-for), which source and
+   whether to mirror it (source-for), the world-pixel quad given the tile-unit
+   draw-size/offset (draw-rect), and the wall-clock animation frame index (frame,
+   relocated here when the one-fn sim.render.anim ns was removed).")
 
 (set! *warn-on-reflection* true)
 

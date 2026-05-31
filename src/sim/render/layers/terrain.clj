@@ -7,10 +7,9 @@
   (:require
    [sim.tile :as tile]
    [sim.defs :as defs]
-   [sim.render.graphic :as graphic]
    [sim.render.sprites :as sprites])
   (:import
-   (com.badlogic.gdx.graphics Color Texture)
+   (com.badlogic.gdx.graphics Texture)
    (com.badlogic.gdx.graphics.g2d SpriteBatch)))
 
 (set! *warn-on-reflection* true)
@@ -31,8 +30,4 @@
           (.setColor batch (float r) (float g) (float b) (float 1.0))
           (.draw batch pixel (float px) (float py) (float ts) (float ts))
           ;; 2. detail sprite on top, untinted, resolved through the graphic
-          (when-let [gr (defs/graphic (:graphic (defs/terrain t)))]
-            (when-let [region (sprites/graphic-region gr :down now-ms)]
-              (let [[gx gy gw gh] (graphic/draw-rect gr [px py] ts)]
-                (.setColor batch Color/WHITE)
-                (.draw batch region (float gx) (float gy) (float gw) (float gh))))))))))
+          (sprites/draw-graphic! batch (:graphic (defs/terrain t)) [px py] ts now-ms))))))
