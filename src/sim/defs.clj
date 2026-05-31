@@ -160,7 +160,7 @@
   "Terrain def for `k`; unknown keys fall back to the :grass entry."
   [k]
   (let [t (:terrain @db)]
-    (get t k (get t :grass))))
+    (or (get t k) (get t :grass))))
 
 (def ^:private default-color
   "Neutral grey for a terrain def lacking a :color (graceful, never crashes)."

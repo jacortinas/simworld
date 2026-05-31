@@ -8,6 +8,7 @@
    When/if contention shows up, partition by *aspect* — never by entity."
   (:require
    [sim.entity   :as entity]
+   [sim.log      :as log]
    [sim.schedule :as schedule]
    [sim.tile     :as tile]
    [sim.worldgen :as worldgen]))
@@ -34,7 +35,7 @@
      :zones        []          ; stockpile zones (see sim.zone); plain saved state
      :next-zone-id 1           ; monotonic zone-id counter
      :events       []
-     :log          []
+     :log          log/empty-log
      :rng-seed     seed}))
 
 ;; ---------------------------------------------------------------------------

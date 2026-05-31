@@ -2,8 +2,9 @@
   "Chronological debug log of what's happening in the sim.
 
    Distinct from `sim.events`: events drive gameplay forward; the log just
-   records what already happened. The log lives in (:log world) as a vector
-   of entries, oldest first. Bounded to the last `max-entries` items.
+   records what already happened. The log lives in (:log world) as a
+   PersistentQueue of entries, oldest first (head = oldest). Bounded to the last
+   `max-entries` items; past the cap, eviction pops the oldest in O(1).
 
    Each entry is a flat map with at least `:tick` and `:type`; other keys
    are entry-specific. Flat for REPL ergonomics — `(:item entry)` beats
@@ -24,23 +25,32 @@
   "Cap on log size. Past this, oldest entries drop off."
   500)
 
+(def empty-log
+  "An empty log. A PersistentQueue so the bounded-ring eviction is O(1) (pop the
+   oldest at the head) rather than recopying the whole vector on every append
+   once full. Seq order is oldest-first, just like the old vector."
+  clojure.lang.PersistentQueue/EMPTY)
+
 (defn append
   "Pure: return `world` with `data` (a map) appended to `:log`. `:tick` is
-   stamped automatically from the world's clock. Drops oldest entries past
-   the cap. Materializes (into []) when trimming so old vectors can be GC'd
-   rather than held alive by a subvec view."
+   stamped automatically from the world's clock. Past the cap, the oldest entry
+   is popped in O(1). A non-queue `:log` (a fresh `[]` or a hand-built world) is
+   coerced to a queue on first append, so eviction always drops the OLDEST,
+   never the newest."
   [world data]
   (let [entry (assoc data :tick (:clock world))
-        log   (conj (or (:log world) []) entry)
-        log   (if (> (count log) max-entries)
-                (into [] (subvec log (- (count log) max-entries)))
-                log)]
-    (assoc world :log log)))
+        cur   (:log world)
+        q     (conj (if (instance? clojure.lang.PersistentQueue cur)
+                      cur
+                      (into empty-log cur))
+                    entry)]
+    (assoc world :log (if (> (count q) max-entries) (pop q) q))))
 
 (defn entries
-  "All log entries, oldest first."
+  "All log entries as a vector, oldest first. The stored form is a queue; this
+   materializes it so `recent` can index and the REPL gets a familiar vector."
   [world]
-  (or (:log world) []))
+  (vec (or (:log world) empty-log)))
 
 (defn recent
   "Last `n` entries, oldest first."
@@ -69,4 +79,4 @@
 (defn clear
   "Pure: return `world` with the log emptied. Useful before reproducing a bug."
   [world]
-  (assoc world :log []))
+  (assoc world :log empty-log))

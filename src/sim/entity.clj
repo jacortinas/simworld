@@ -158,3 +158,24 @@
   "Set the position of an entity to [x y]."
   [world id pos]
   (update-entity world id assoc :pos pos))
+
+;; ---------------------------------------------------------------------------
+;; Id-counter maintenance. The id counter is the ONE piece of entity state that
+;; lives outside the world map (it's process-global; contrast :next-zone-id,
+;; which sim.zone keeps IN the world and so saves for free). Because the counter
+;; isn't frozen into a save, a save loaded into a fresh process starts the
+;; counter at 0 while the loaded entities already hold high ids — the next spawn
+;; would collide. Re-seed past the loaded ids on load (see sim.save/load!).
+;; ---------------------------------------------------------------------------
+
+(defn max-entity-id
+  "Highest entity id in `world`, or 0 if there are none. Pure."
+  ^long [world]
+  (reduce max 0 (keys (:entities world))))
+
+(defn seed-id-counter!
+  "Advance the global id counter past every id already in `world`, never
+   backward. Returns the new counter value. Call after loading a save into a
+   fresh process so the next constructed entity can't reuse a loaded id."
+  [world]
+  (reset! id-counter (max @id-counter (max-entity-id world))))

@@ -91,7 +91,7 @@
     (when (seq cells)
       (let [loose (->> (entity/items world)
                        (filter #(and (:pos %)
-                                     (not (zone/cell-zoned? world (:pos %)))
+                                     (not (contains? cells (:pos %)))
                                      (reservation/can-reserve? world (:id %) (:id pawn)))))]
         (when (seq loose)
           (let [item (first (sort-by (juxt #(manhattan pos (:pos %)) :id) loose))

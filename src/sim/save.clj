@@ -11,6 +11,7 @@
    code may not handle them. Migration logic is a TODO for when we have a
    shape worth migrating."
   (:require
+   [sim.entity     :as entity]
    [sim.schedule   :as schedule]
    [taoensso.nippy :as nippy]))
 
@@ -36,9 +37,14 @@
    slot))
 
 (defn load!
-  "Thaw saves/<slot>.npy and rebuild the derived schedule index. Returns the
-   world value (does NOT touch the atom). Handles both new (stripped) saves and
-   older saves lacking :schedule. Throws if the file is missing or corrupt."
+  "Thaw saves/<slot>.npy, rebuild the derived schedule index, and re-seed the
+   process-global entity id counter past the loaded ids. Returns the world value
+   (does NOT touch the WORLD atom — but DOES advance the id counter, the one
+   entity invariant a frozen save can't carry; see entity/seed-id-counter!).
+   Handles both new (stripped) saves and older saves lacking :schedule. Throws
+   if the file is missing or corrupt."
   ([] (load! "autosave"))
   ([slot]
-   (schedule/reindex (nippy/thaw-from-file (path slot)))))
+   (let [world (schedule/reindex (nippy/thaw-from-file (path slot)))]
+     (entity/seed-id-counter! world)
+     world)))
