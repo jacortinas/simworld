@@ -61,21 +61,33 @@
           (entity/pawns world)))
 
 (defn redeliberate-idle-system
-  "Normal + sub-throttled: idle pawns pick behavior on their staggered rare tick."
+  "Normal + sub-throttled: idle pawns pick behavior on their staggered rare tick.
+   Gates on `due?` FIRST (cheap id math that skips ~124/125 of pawns) before the
+   entity fetch and idle check, so a non-due or busy pawn costs almost nothing.
+   Behavior matches the old order: ai/redeliberate already no-ops a pawn with a
+   job, so skipping the call for a busy pawn is equivalent."
   [world _due]
   (let [clock    (long (:clock world))
         interval (long (:rare schedule/bands))]
     (reduce (fn [w stale]
-              (let [pawn (entity/entity w (:id stale))]
-                (if (and pawn (schedule/due? clock interval (:id stale)))
-                  (ai/redeliberate w pawn)
+              (let [id (:id stale)]
+                (if (schedule/due? clock interval id)
+                  (let [pawn (entity/entity w id)]
+                    (if (and pawn (nil? (:job pawn)))
+                      (ai/redeliberate w pawn)
+                      w))
                   w)))
             world
             (entity/pawns world))))
 
 (defn deteriorate-system
-  "Long: would deteriorate the due :item entities. Stub until items deteriorate.
-   `due` is the long bucket's items; no-op for now."
+  "Long-band system that WOULD deteriorate the due :item entities. Deliberately
+   NOT registered (see below): it is a no-op until items actually deteriorate,
+   and run* skips any band with no system — so registering a no-op here would
+   just burn a due-bucket computation every tick for nothing. Items are still
+   `:ticker-type :long` and bucketed, so the day this does real work, one
+   `register-system! :long` call lights it up over the ready buckets. `due` is
+   the long bucket's items."
   [world due]
   (reduce (fn [w _item] w) world due))
 
@@ -83,13 +95,18 @@
 ;; Registration. Idempotent across reloads (register-system! replaces by name).
 ;; Order within :normal: events -> decay -> advance-jobs -> redeliberate, so
 ;; needs decay before any decision, matching the old step-pawns ordering.
+;;
+;; Only :normal systems are registered. No entity type does rare-banded work
+;; yet, and deterioration (:long) isn't implemented; since run* skips a band
+;; with no registered system, the scheduler does ZERO work for :rare/:long
+;; while their buckets stay maintained (items live in :long, ready). Register a
+;; :rare/:long system the moment one has real work — no other wiring changes.
 ;; ---------------------------------------------------------------------------
 
 (schedule/register-system! :normal ::process-events process-events-system)
 (schedule/register-system! :normal ::decay-needs    decay-needs-system)
 (schedule/register-system! :normal ::advance-jobs   advance-jobs-system)
 (schedule/register-system! :normal ::redeliberate   redeliberate-idle-system)
-(schedule/register-system! :long   ::deteriorate    deteriorate-system)
 
 ;; ---------------------------------------------------------------------------
 

@@ -122,15 +122,26 @@
 (defn run*
   "Pure scheduler step given an explicit systems map. Assumes (:clock world)
    is already advanced for this tick. Normal systems run every tick (nil due);
-   rare/long systems run over their due bucket's entities."
+   rare/long systems run over their due bucket's entities.
+
+   A band with NO registered systems is skipped entirely — its due bucket is
+   never even computed — so the scheduler pays only for bands that have a
+   consumer this run. An empty :rare band (no rare-ticked entity type yet) and
+   an unconsumed :long band thus cost nothing per tick, while their bucketing
+   stays maintained and ready the instant a system registers."
   [world systems-map]
   (let [clock    (long (:clock world))
-        run-band (fn [w band due]
-                   (reduce (fn [w [_ f]] (f w due)) w (get systems-map band)))]
+        run-band (fn [w band]
+                   (let [band-systems (get systems-map band)]
+                     (if (seq band-systems)
+                       (let [due (when-not (= band :normal)
+                                   (due-entities w band clock))]
+                         (reduce (fn [w [_ f]] (f w due)) w band-systems))
+                       w)))]
     (-> world
-        (run-band :normal nil)
-        (as-> w (run-band w :rare (due-entities w :rare clock)))
-        (as-> w (run-band w :long (due-entities w :long clock))))))
+        (run-band :normal)
+        (run-band :rare)
+        (run-band :long))))
 
 (defn run
   "Scheduler step using the globally registered systems."
