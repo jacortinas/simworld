@@ -15,6 +15,7 @@
    [sim.entity      :as entity]
    [sim.log         :as log]
    [sim.pathfinding :as pathfinding]
+   [sim.pathgrid    :as pathgrid]
    [sim.reservation :as reservation]))
 
 (set! *warn-on-reflection* true)
@@ -195,6 +196,22 @@
                                 (assoc-in [:job :move]
                                           {:from from :to to :elapsed 0 :cost cost}))))))
 
+(defn- next-cell-passable?
+  "Is path cell `next-i` still passable in `world`'s current PathGrid? A wall
+   built across a walking pawn's route turns this false."
+  [world pawn next-i]
+  (let [[nx ny] ((get-in pawn [:job :path]) next-i)]
+    (pathgrid/passable? (pathgrid/for-world world) nx ny)))
+
+(defn- step-or-replan
+  "Start gliding into path cell `next-i`, unless it is now blocked (a wall
+   appeared), in which case nil the path so walk-toward's (nil? path) branch
+   replans for free."
+  [world pawn next-i]
+  (if (next-cell-passable? world pawn next-i)
+    [:walking (start-segment world pawn next-i)]
+    [:walking (set-job world (:id pawn) assoc :path nil :path-index 0 :move nil)]))
+
 (defn- walk-toward
   "Advance the pawn ONE TICK toward `target`, gliding sub-cell. Returns
    `[result world']`:
@@ -230,14 +247,14 @@
                 idx     (:path-index job)]
             (if (last? idx)
               [:arrived cleared]
-              [:walking (start-segment cleared (entity/entity cleared pid) (inc idx))]))))
+              (step-or-replan cleared (entity/entity cleared pid) (inc idx))))))
 
       ;; Settled with no glide in flight: at the goal, or kick off the next cell.
       (last? (:path-index job))
       [:arrived world]
 
       :else
-      [:walking (start-segment world pawn (inc (:path-index job)))])))
+      (step-or-replan world pawn (inc (:path-index job))))))
 
 ;; ---------------------------------------------------------------------------
 ;; advance: the public dispatch. (world, pawn) -> world.

@@ -204,6 +204,27 @@
       (is (= [2 0] (:pos (entity/entity (drive-n w1 pid 32) pid)))))))
 
 ;; ---------------------------------------------------------------------------
+;; Step-validation: a wall built on a walking pawn's NEXT path cell must nil
+;; the path (free replan via walk-toward's (nil? path) branch) rather than
+;; gliding the pawn onto the wall. The PathGrid reflects the wall the instant
+;; it is placed, so next-cell-passable? sees it.
+;; ---------------------------------------------------------------------------
+
+(deftest wall-on-next-cell-forces-replan
+  (testing "a wall built on a walking pawn's next path cell nils the path so it
+            replans rather than gliding onto the wall"
+    (let [g    (tile/make-grid 3 3)
+          pawn (-> (entity/make-pawn "p" [1 0])
+                   (assoc :job {:type :go-to :state :in-progress :target [2 0]
+                                :path [[1 0] [2 0]] :path-index 0 :move nil}))
+          w    (-> {:grid g :entities {(:id pawn) pawn} :kinds (entity/empty-kinds)}
+                   (entity/add-entity (entity/make-building [2 0])))
+          w'   (job/advance w (entity/entity w (:id pawn)))
+          p'   (entity/entity w' (:id pawn))]
+      (is (not= [2 0] (:pos p')) "pawn did not step onto the wall cell")
+      (is (nil? (get-in p' [:job :path])) "stale path dropped for a free replan"))))
+
+;; ---------------------------------------------------------------------------
 ;; assign — the one path all assignment routes through
 ;; ---------------------------------------------------------------------------
 
