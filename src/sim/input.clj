@@ -92,14 +92,17 @@
         (condp = (int keycode)
           ;; space → pause is INJECTED (on-toggle-pause) to keep this ns from
           ;; importing sim.clock. The debug toggle is called DIRECTLY because
-          ;; we already depend on sim.ui-state (zoom/pan) — no new coupling.
+          ;; we already depend on sim.ui-state (zoom/pan) -- no new coupling.
           Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
           Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
           Input$Keys/Z      (do (ui/set-mode! :zone-stockpile) true) ; enter zoning
-          ;; Escape is context-sensitive: cancel the active zoning tool first;
-          ;; only when no tool is active does it open the pause menu (RimWorld
-          ;; backs out of the current tool before the menu).
-          Input$Keys/ESCAPE (do (if (= (ui/mode) :zone-stockpile)
+          Input$Keys/B      (do (ui/set-mode! :build) true)          ; enter build mode
+          Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
+          Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay
+          ;; Escape is context-sensitive: cancel the active tool (zoning or build)
+          ;; first; only when no tool is active does it open the pause menu
+          ;; (RimWorld backs out of the current tool before the menu).
+          Input$Keys/ESCAPE (do (if (#{:zone-stockpile :build} (ui/mode))
                                   (do (ui/set-mode! :select) (ui/clear-drag!))
                                   (when on-open-pause-menu (on-open-pause-menu)))
                                 true)
@@ -116,16 +119,24 @@
                   [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
               (condp = (int button)
                 ;; In zoning mode left starts a drag-rectangle and right cancels
-                ;; the mode; otherwise the usual select / order commands.
+                ;; the mode; in build mode left places/deconstructs and right
+                ;; exits; otherwise the usual select / order commands.
                 Input$Buttons/LEFT
-                (if (= (ui/mode) :zone-stockpile)
+                (cond
+                  (= (ui/mode) :zone-stockpile)
                   ;; Shift held at drag-start makes this an ERASE drag; the flag
                   ;; sticks for the whole drag (drives preview color + commit).
                   (ui/set-drag! {:start [tx ty] :current [tx ty] :erase? (shift-down?)})
-                  (command/left-click! tx ty))
+
+                  (= (ui/mode) :build)
+                  (if (shift-down?)
+                    (command/deconstruct-wall! tx ty)
+                    (command/build-wall! tx ty))
+
+                  :else (command/left-click! tx ty))
 
                 Input$Buttons/RIGHT
-                (if (= (ui/mode) :zone-stockpile)
+                (if (#{:zone-stockpile :build} (ui/mode))
                   (do (ui/set-mode! :select) (ui/clear-drag!))
                   (command/right-click! tx ty))
 

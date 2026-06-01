@@ -1,26 +1,31 @@
 (ns sim.screens.play
-  "The :play screen. Draws the world (terrain → zones → flora → items → pawns →
-   selection box → debug overlay) under the world cam, then the HUD + hover
+  "The :play screen. Draws the world (terrain -> zones -> flora -> items ->
+   buildings -> pawns -> selection box -> debug overlay -> debug-regions ->
+   debug-pathgrid -> build-cursor) under the world cam, then the HUD + hover
    inspect panel under the UI cam.
    This is the body that USED to live in sim.render.gdx/render.
 
    make-processor wraps sim.input/make-processor with one extra injected
-   callback: :on-open-pause-menu (Esc → app/enter-pause-menu!)."
+   callback: :on-open-pause-menu (Esc -> app/enter-pause-menu!)."
   (:require
-   [sim.app                    :as app]
-   [sim.clock                  :as clock]
-   [sim.input                  :as input]
-   [sim.screens                :as screens]
-   [sim.ui-state               :as ui]
-   [sim.ui.hud                 :as hud]
-   [sim.ui.inspect-panel       :as inspect-panel]
-   [sim.render.layers.terrain  :as terrain]
-   [sim.render.layers.zones    :as zones-layer]
-   [sim.render.layers.flora    :as flora-layer]
-   [sim.render.layers.items    :as items-layer]
-   [sim.render.layers.pawns    :as pawns-layer]
-   [sim.render.layers.selection :as selection-layer]
-   [sim.render.layers.debug    :as debug-layer])
+   [sim.app                             :as app]
+   [sim.clock                           :as clock]
+   [sim.input                           :as input]
+   [sim.screens                         :as screens]
+   [sim.ui-state                        :as ui]
+   [sim.ui.hud                          :as hud]
+   [sim.ui.inspect-panel                :as inspect-panel]
+   [sim.render.layers.terrain           :as terrain]
+   [sim.render.layers.zones             :as zones-layer]
+   [sim.render.layers.flora             :as flora-layer]
+   [sim.render.layers.items             :as items-layer]
+   [sim.render.layers.buildings         :as buildings-layer]
+   [sim.render.layers.pawns             :as pawns-layer]
+   [sim.render.layers.selection         :as selection-layer]
+   [sim.render.layers.debug             :as debug-layer]
+   [sim.render.layers.debug-regions     :as debug-regions-layer]
+   [sim.render.layers.debug-pathgrid    :as debug-pathgrid-layer]
+   [sim.render.layers.build-cursor      :as build-cursor-layer])
   (:import
    (com.badlogic.gdx.graphics Color OrthographicCamera Texture)
    (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont)))
@@ -59,12 +64,23 @@
     (zones-layer/draw world batch tile-size pixel)
     (flora-layer/draw world batch tile-size now-ms)
     (items-layer/draw world batch tile-size now-ms)
+    ;; Buildings (walls) above items and below pawns: occlude the floor but not
+    ;; colonists.
+    (buildings-layer/draw world batch tile-size now-ms)
     (pawns-layer/draw world batch tile-size now-ms)
     ;; Selection box: world-space marker around the selected entity's tile (any
     ;; kind), reusing the 1px texture. Before the debug overlay so a debug path
     ;; still draws on top of the box.
     (selection-layer/draw world batch tile-size pixel)
     (debug-layer/draw world batch tile-size pixel)
+    ;; Debug overlays: region tints and pathgrid blocked-cell wash. Drawn after
+    ;; the path overlay so region/pathgrid sit above paths visually but below
+    ;; the build cursor (which must be on top of everything).
+    (debug-regions-layer/draw world batch tile-size pixel)
+    (debug-pathgrid-layer/draw world batch tile-size pixel)
+    ;; Build cursor: single-cell indicator on top of all world layers so the
+    ;; placement preview is never obscured.
+    (build-cursor-layer/draw world batch tile-size pixel)
     (.end batch)
 
     ;; --- Fixed UI cam: HUD that ignores pan/zoom ---
