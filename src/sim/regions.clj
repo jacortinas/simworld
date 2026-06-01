@@ -25,7 +25,8 @@
    NOT saved. Depends only on sim.tile (pathfinding requires regions, never the
    reverse — the graph stays acyclic)."
   (:require
-   [sim.tile :as tile]))
+   [sim.pathgrid :as pathgrid]
+   [sim.tile     :as tile]))
 
 (set! *warn-on-reflection* true)
 
@@ -60,20 +61,21 @@
                           (aset rank (int ra) (inc hra))))))))
 
 (defn- build-index
-  "Label every passable cell with its connected-component id (an int-array keyed
-   by tile/idx, -1 for impassable). Ids are canonicalized in linear-scan order so
-   the labeling is DETERMINISTIC (same grid -> same ids), independent of which
-   cell union-find happened to pick as a root."
-  [{:keys [width height tiles]}]
+  "Label every cell with finite cost in `costs` with its connected-component id
+   (an int-array keyed by tile/idx, -1 for blocked). Ids are canonicalized in
+   linear-scan order so the labeling is DETERMINISTIC (same costs -> same ids),
+   independent of which cell union-find happened to pick as a root."
+  [width height ^doubles costs]
   (let [width    (long width)
         height   (long height)
         n        (* width height)
         passable (boolean-array n)
         parent   (int-array n)
         rank     (int-array n)]
-    ;; snapshot passability once + init each cell as its own set
+    ;; snapshot passability once (finite cost = passable) + init each cell as its
+    ;; own set
     (dotimes [i n]
-      (aset passable i (boolean (tile/passable? (nth tiles i))))
+      (aset passable i (< (aget costs i) Double/POSITIVE_INFINITY))
       (aset parent i i))
     ;; union each passable cell with its FORWARD passable neighbors (right, down,
     ;; down-right, down-left). Those four cover every 8-adjacency edge exactly
@@ -116,23 +118,33 @@
       {:width width :height height :ids ids :count (.size remap)})))
 
 ;; ---------------------------------------------------------------------------
-;; Cache — size-1 memo keyed by grid identity. Pure projection of an immutable
-;; grid, so a hit is byte-identical to a rebuild; a miss just recomputes O(n).
+;; Cache: size-1 memo keyed by PathGrid identity. Regions are a pure projection
+;; of the PathGrid (terrain + buildings), so a hit is byte-identical to a
+;; rebuild; a miss just recomputes O(n). The PathGrid's identity flips exactly
+;; when passability changes (a new grid, or a building add/remove), so the cache
+;; CANNOT go stale: the staleness failure mode here is precisely the false
+;; negative.
 ;; ---------------------------------------------------------------------------
 
-(defonce ^:private cache (atom nil))   ; {:grid <grid> :regions <index>}
+(defonce ^:private cache (atom nil))   ; {:pathgrid <pg> :regions <index>}
+
+(defn of-pathgrid
+  "Region index for a PathGrid, memoized by the PathGrid's IDENTITY. A new
+   PathGrid value (new terrain or building set) is a new identity, so this can
+   never return a stale labeling for the wrong passability."
+  [pg]
+  (let [c @cache]
+    (if (and c (identical? pg (:pathgrid c)))
+      (:regions c)
+      (let [index (build-index (:width pg) (:height pg) (:costs pg))]
+        (reset! cache {:pathgrid pg :regions index})
+        index))))
 
 (defn of-grid
-  "The region index for grid — built once and memoized by grid IDENTITY. A new
-   grid value (any set-tile) is a new identity, so this can never return a stale
-   labeling for the wrong grid."
+  "Region index for a terrain-only grid (no buildings). Convenience for tests and
+   terrain inspection; production reachability goes through of-pathgrid/for-world."
   [grid]
-  (let [c @cache]
-    (if (and c (identical? grid (:grid c)))
-      (:regions c)
-      (let [index (build-index grid)]
-        (reset! cache {:grid grid :regions index})
-        index))))
+  (of-pathgrid (pathgrid/build grid [])))
 
 ;; ---------------------------------------------------------------------------
 ;; Queries
@@ -151,11 +163,12 @@
   (:count region-index))
 
 (defn reachable?
-  "True iff a and b are both passable AND in the same connected component — i.e.
-   A* would find a path between them. Both impassable/oob -> false (their region
-   ids are -1, but we require a non-negative id, so two walls never 'match')."
-  [grid [ax ay] [bx by]]
-  (let [index (of-grid grid)
+  "True iff a and b are both passable AND in the same connected component of
+   `world`'s PathGrid (terrain + buildings): i.e. A* would find a path between
+   them. Both impassable/oob -> false (their region ids are -1, but we require a
+   non-negative id, so two blocked cells never 'match')."
+  [world [ax ay] [bx by]]
+  (let [index (of-pathgrid (pathgrid/for-world world))
         ra    (region-at index ax ay)]
     (and (>= ra 0)
          (== ra (region-at index bx by)))))

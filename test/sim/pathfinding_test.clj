@@ -6,6 +6,7 @@
   (:require
    [clojure.test :refer [deftest is testing]]
    [sim.tile        :as tile]
+   [sim.entity      :as entity]
    [sim.pathfinding :as pathfinding]))
 
 (defn- world-of
@@ -112,6 +113,15 @@
                     (range 4))]                         ; wall column splits the grid
       (is (nil? (pathfinding/find-path (world-of g) [0 0] [4 0]))
           "left-room start, right-room goal: no route across the wall"))))
+
+(deftest building-blocks-the-only-corridor
+  (testing "a wall entity on the sole corridor cell severs the path: find-path
+            reads the PathGrid (terrain + buildings), not terrain alone"
+    (let [g (tile/make-grid 3 1)                 ; [0 0][1 0][2 0], all grass
+          w (entity/add-entity {:grid g :entities {} :kinds (entity/empty-kinds)}
+                               (entity/make-building [1 0]))]
+      (is (nil? (pathfinding/find-path w [0 0] [2 0]))
+          "the wall on [1 0] leaves no route"))))
 
 ;; ---------------------------------------------------------------------------
 ;; Determinism — the tie-break is a TOTAL order (f, then linear index), so the

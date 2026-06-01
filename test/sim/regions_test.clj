@@ -101,6 +101,6 @@
                   s     (pick)
                   g     (pick)
                   label (str s "->" g " on " w "x" h)]
-              (is (= (regions/reachable? grid s g)
+              (is (= (regions/reachable? {:grid grid} s g)
                      (some? (pathfinding/find-path {:grid grid} s g)))
                   (str "reachable? must match find-path for " label)))))))))

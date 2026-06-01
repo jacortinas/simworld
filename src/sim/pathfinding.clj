@@ -31,8 +31,9 @@
 
    The public API (find-path / traversal-cost) is stable."
   (:require
-   [sim.regions :as regions]
-   [sim.tile    :as tile]))
+   [sim.pathgrid :as pathgrid]
+   [sim.regions  :as regions]
+   [sim.tile     :as tile]))
 
 (set! *warn-on-reflection* true)
 
@@ -129,27 +130,21 @@
       ;; so skip A* entirely instead of letting it explore the whole reachable
       ;; component to conclude the same. reachable? also rejects an impassable
       ;; START (the goal-only guard above does not), since it checks both ends.
-      (not (regions/reachable? grid start goal))
+      (not (regions/reachable? world start goal))
       nil
 
       :else
       (let [n         (* width height)
-            tiles     (:tiles grid)
-            cost      (double-array n)
-            passable  (boolean-array n)
+            ;; Shared PathGrid cost array (terrain + buildings), read-only (no
+            ;; per-search fill). INFINITY = impassable; passability is inlined as
+            ;; (< (aget cost idx) INFINITY).
+            ^doubles cost (:costs (pathgrid/for-world world))
             g-score   (double-array n Double/POSITIVE_INFINITY)
             came-from (int-array n -1)
             closed    (boolean-array n)
             ^java.util.PriorityQueue pq (java.util.PriorityQueue.)
             start-idx (int (+ sx (* sy width)))
             goal-idx  (int (+ gx (* gy width)))]
-        ;; Per-search terrain snapshot: resolve each cell's cost/passability once
-        ;; so the hot loop reads arrays, never the defs registry.
-        (dotimes [i n]
-          (let [t (nth tiles i)
-                p (boolean (tile/passable? t))]
-            (aset passable i p)
-            (aset cost i (if p (double (tile/move-cost t)) Double/POSITIVE_INFINITY))))
         (aset g-score start-idx 0.0)
         (.add pq (Entry. (octile* sx sy gx gy) start-idx))
         (loop []
@@ -172,17 +167,18 @@
                             nx (+ cx dx)
                             ny (+ cy dy)]
                         (when (and (>= nx 0) (< nx width) (>= ny 0) (< ny height))
-                          (let [nidx (int (+ nx (* ny width)))]
+                          (let [nidx  (int (+ nx (* ny width)))
+                                ncost (aget cost nidx)]
                             (when (and (not (aget closed nidx))
-                                       (aget passable nidx))
+                                       (< ncost Double/POSITIVE_INFINITY))
                               (let [diag (and (not (zero? dx)) (not (zero? dy)))]
                                 ;; corner rule: a diagonal is refused if either
                                 ;; flanking cardinal is impassable. Both flanks are
                                 ;; in-bounds whenever the diagonal neighbor is.
                                 (when-not (and diag
-                                               (or (not (aget passable (int (+ nx (* cy width)))))
-                                                   (not (aget passable (int (+ cx (* ny width)))))))
-                                  (let [step      (* (aget cost nidx) (if diag root2 1.0))
+                                               (or (>= (aget cost (int (+ nx (* cy width)))) Double/POSITIVE_INFINITY)
+                                                   (>= (aget cost (int (+ cx (* ny width)))) Double/POSITIVE_INFINITY)))
+                                  (let [step      (* ncost (if diag root2 1.0))
                                         tentative (+ gc step)]
                                     (when (< tentative (aget g-score nidx))
                                       (aset g-score nidx tentative)
