@@ -23,12 +23,14 @@
   ;; zoom < 1.0 zooms IN (OrthographicCamera semantics). 0.8 is a slightly
   ;; closer default than 1.0. gdx `create` recenters :x/:y on the map midpoint,
   ;; so those are just an initial placeholder.
-  (atom {:camera   {:x 400.0 :y 200.0 :zoom 0.8}
-         :selected nil
-         :hover    nil
-         :debug?   false
-         :mode     :select   ; :select | :zone-stockpile (placement mode)
-         :drag     nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
+  (atom {:camera          {:x 400.0 :y 200.0 :zoom 0.8}
+         :selected        nil
+         :hover           nil
+         :debug?          false
+         :debug-regions?  false
+         :debug-pathgrid? false
+         :mode            :select   ; :select | :zone-stockpile | :build
+         :drag            nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
 
 (defn camera [] (:camera @ui-state))
 
@@ -65,6 +67,26 @@
    can echo the state. `not` on a nil (absent key) yields true — reload-safe."
   []
   (:debug? (swap! ui-state update :debug? not)))
+
+(defn debug-regions?
+  "Is the regions debug overlay currently shown?"
+  []
+  (:debug-regions? @ui-state))
+
+(defn toggle-debug-regions?
+  "Flip the regions debug overlay on/off. Returns the NEW boolean."
+  []
+  (:debug-regions? (swap! ui-state update :debug-regions? not)))
+
+(defn debug-pathgrid?
+  "Is the pathgrid debug overlay currently shown?"
+  []
+  (:debug-pathgrid? @ui-state))
+
+(defn toggle-debug-pathgrid?
+  "Flip the pathgrid debug overlay on/off. Returns the NEW boolean."
+  []
+  (:debug-pathgrid? (swap! ui-state update :debug-pathgrid? not)))
 
 ;; ---------------------------------------------------------------------------
 ;; Interaction mode + in-progress placement drag. Both VIEW state — the mode is

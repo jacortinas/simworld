@@ -49,3 +49,11 @@
     (is (= {:start [0 0] :current [2 3]} (ui/drag)))
     (ui/clear-drag!)
     (is (nil? (ui/drag)))))
+
+(deftest region-and-pathgrid-debug-toggles
+  (reset! ui/ui-state (assoc @ui/ui-state :debug-regions? false :debug-pathgrid? false))
+  (is (false? (boolean (ui/debug-regions?))))
+  (is (true? (ui/toggle-debug-regions?)) "toggles on")
+  (is (true? (ui/debug-regions?)))
+  (is (true? (ui/toggle-debug-pathgrid?)) "independent flag toggles on from false")
+  (is (false? (ui/toggle-debug-pathgrid?)) "toggles back off"))
