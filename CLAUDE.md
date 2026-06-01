@@ -393,11 +393,15 @@ old compiled loop body until `start!` respawns it.
   existing `(nil? path)` branch replans for FREE — do NOT add recompute-every-
   tick (A* is now the array-backed `java.util.PriorityQueue` implementation in
   `sim.pathfinding` — fast, ~2-12× the old map-based scan, but a full replan
-  every tick is still wasteful). Later: a region graph for cheap
-  reachability ("can A reach B?" without a full failed A* that explores the whole
-  map) + hierarchical pathing — the HPA* endgame noted in `sim.pathfinding`. This
-  is RimWorld's model (regions + reachability cache + dirty-on-build + per-step
-  path validation).
+  every tick is still wasteful). **Stage 1 of the reachability work is DONE:**
+  `sim.regions` labels passable cells into connected components and `find-path`
+  short-circuits to nil in O(1) when start/goal are passable but in different
+  components — no more full-map explore to conclude "unreachable" (~15,700× on the
+  120×120 split-grid worst case: 1.69ms → 108ns warm). STILL deferred (Stage 2):
+  a region GRAPH + hierarchical pathing (HPA*) for coarse routing on big maps, and
+  dirty-on-build incremental region rebuild for when runtime wall/door building
+  lands. This is RimWorld's model (regions + reachability cache + dirty-on-build +
+  per-step path validation).
 - **GLFW restart-in-same-JVM is now moot.** The unified main-thread model
   removed the window spawn / `(go!)`-reopens-window path, so the old "can we
   restart libGDX in one REPL session?" question no longer applies —
@@ -437,7 +441,15 @@ old compiled loop body until `start!` respawns it.
   corner rule. Internals are primitive-array state (g/came-from/closed) + a
   `java.util.PriorityQueue` open set ordered by a total `(f, idx)` key; `traversal-
   cost` stays the public cost currency. octile consistency needs `move-cost ≥ 1.0`
-  (enforced by `defs ::move-cost`).
+  (enforced by `defs ::move-cost`). Short-circuits to nil via `sim.regions`
+  before A* when start/goal are in different connected components.
+- `src/sim/regions.clj` — PURE connected-component labeling (RimWorld's
+  reachability cache): `of-grid` (union-find over passable cells, the SAME
+  8-dir + corner-rule adjacency A* uses, memoized by grid IDENTITY in a size-1
+  `defonce` atom), `reachable?`/`region-at`/`count-regions`. Cache CANNOT go
+  stale (a new grid value is a new identity → rebuild), so no false negatives.
+  Depends only on `sim.tile`; NOT in the world, NOT saved. Stage 2 (region graph
+  / HPA*, dirty-on-build) deferred.
 - `src/sim/reservation.clj` — PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
   stored state, release is automatic. Depends only on `sim.entity`.
