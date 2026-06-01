@@ -33,7 +33,7 @@
    sim.defs/::thing-entry's opt-keys — a content key absent here is silently
    dropped at construction (acceptable at small scale; derive one from the other
    when thing-defs proliferate)."
-  [:kind :ticker-type :move-ticks :needs :material :traits :skills :graphic])
+  [:kind :ticker-type :move-ticks :needs :material :traits :skills :graphic :blocks-path?])
 
 (defn make-thing
   "Construct an entity instance of thing-def `def-id` at [x y]. Reads the
@@ -86,6 +86,15 @@
   [pos]
   (make-thing :tree pos))
 
+;; A wall: a built, path-blocking edifice. Inert (no band system reads :building
+;; in Spec 1); its :blocks-path? feeds sim.pathgrid. The :built state is runtime
+;; scaffolding (like a pawn's :job) -- Specs 2/3 add :blueprint/:frame states.
+(defn make-building
+  "Construct a built wall (the :wall thing-def) at [x y]. Pure -- does NOT insert."
+  [pos]
+  (-> (make-thing :wall pos)
+      (assoc :state :built)))
+
 ;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
 ;; Defined before any helpers that consume them so a cold-start load resolves
@@ -122,6 +131,11 @@
   "Sequence of all tree entities, ascending by id."
   [world]
   (keep #(entity world %) (get-in world [:kinds :tree])))
+
+(defn buildings
+  "Sequence of all building entities, ascending by id."
+  [world]
+  (keep #(entity world %) (get-in world [:kinds :building])))
 
 (defn items-at
   "Sequence of all items currently at [x y]."

@@ -145,3 +145,19 @@
       (is (empty? (entity/pawns w)) "the index is authoritative for kind queries")
       (is (= [(:id pawn)] (map :id (entity/pawns (entity/reindex-kinds w))))
           "reindex-kinds repairs the index"))))
+
+(deftest make-building-is-a-built-wall
+  (let [b (entity/make-building [2 3])]
+    (is (= :building (:kind b)))
+    (is (= :wall (:def b)))
+    (is (true? (:blocks-path? b)) "blocks-path? copied from the def")
+    (is (= :built (:state b)))
+    (is (= :stone (:material b)))
+    (is (= [2 3] (:pos b)))))
+
+(deftest buildings-query-reads-the-kind-index
+  (let [w (-> {:entities {} :kinds (entity/empty-kinds)}
+              (entity/add-entity (entity/make-building [0 0]))
+              (entity/add-entity (entity/make-building [1 0])))]
+    (is (= 2 (count (entity/buildings w))))
+    (is (every? #(= :building (:kind %)) (entity/buildings w)))))
