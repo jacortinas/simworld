@@ -48,7 +48,7 @@
    true if the click landed on the HUD bar (consuming it); toggles pause only
    when it's on the button rect."
   [sx sy]
-  (let [h    (.getHeight (Gdx/graphics))
+  (let [h    (.getHeight Gdx/graphics)
         sx   (long sx)
         sy   (long sy)
         bx   (long (:x button))
@@ -80,7 +80,7 @@
   [^SpriteBatch batch ^BitmapFont font ^Texture pixel world]
   ;; All draw coords precomputed as floats — Clojure widens (+ float float) to
   ;; double, which would force reflective Batch/Font.draw calls every frame.
-  (let [vw       (float (.getWidth (Gdx/graphics)))
+  (let [vw       (float (.getWidth Gdx/graphics))
         bx       (float (:x button))
         by       (float (:y button))
         bw       (float (:w button))

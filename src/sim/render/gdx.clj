@@ -54,7 +54,7 @@
    Pan speed scales with zoom so the world moves at a consistent screen
    pace whether zoomed in or out."
   []
-  (let [input* (Gdx/input)
+  (let [input* Gdx/input
         speed  (* 8.0 (double (:zoom (ui/camera))))
         down?  (fn [k] (.isKeyPressed input* (int k)))]
     (when (or (down? Input$Keys/LEFT)  (down? Input$Keys/A)) (ui/pan! (- speed) 0.0))
@@ -113,7 +113,7 @@
         ;; Initial active processor: :main-menu (the app boots there per sim.app/initial-app).
         ;; All four processors are registered in sim.app/processors above; the screen
         ;; transition fns swap them via setInputProcessor when :screen changes.
-        (.setInputProcessor (Gdx/input) (get @sim.app/processors :main-menu)))
+        (.setInputProcessor Gdx/input (get @sim.app/processors :main-menu)))
 
       (render []
         (poll-camera-keys!)
@@ -131,8 +131,8 @@
                    :tile-size tile-size
                    :world     w
                    :app       @sim.app/app}]
-          (.glClearColor (Gdx/gl) 0.12 0.13 0.16 1.0)
-          (.glClear      (Gdx/gl) GL20/GL_COLOR_BUFFER_BIT)
+          (.glClearColor Gdx/gl 0.12 0.13 0.16 1.0)
+          (.glClear      Gdx/gl GL20/GL_COLOR_BUFFER_BIT)
           (sim.screens/draw-screen (sim.app/current-screen) ctx)))
 
       (resize [w h]
@@ -166,6 +166,6 @@
 (defn stop!
   "Ask the libGDX application to exit gracefully. Safe to call from REPL."
   []
-  (when-let [app (Gdx/app)]
+  (when-let [app Gdx/app]
     (.exit app))
   :stopping)

@@ -42,8 +42,8 @@
   "Render :main-menu. ctx provides batch, font, pixel, ui-cam, viewport dims."
   [{:keys [^SpriteBatch batch ^BitmapFont font ^Texture pixel
            ^com.badlogic.gdx.graphics.OrthographicCamera ui-cam]}]
-  (let [vw (.getWidth  (Gdx/graphics))
-        vh (.getHeight (Gdx/graphics))]
+  (let [vw (.getWidth  Gdx/graphics)
+        vh (.getHeight Gdx/graphics)]
     (.setProjectionMatrix batch (.combined ui-cam))
     (.begin batch)
     ;; full-viewport background
@@ -73,8 +73,8 @@
   (proxy [InputAdapter] []
     (touchDown [screen-x screen-y _pointer button]
       (if (= (int button) Input$Buttons/LEFT)
-        (let [vw    (.getWidth  (Gdx/graphics))
-              vh    (.getHeight (Gdx/graphics))
+        (let [vw    (.getWidth  Gdx/graphics)
+              vh    (.getHeight Gdx/graphics)
               ;; libGDX touchDown gives Y-down screen coords; UI cam is Y-up
               ;; with origin bottom-left, so flip: y_ui = vh - sy.
               x     screen-x

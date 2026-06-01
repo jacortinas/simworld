@@ -36,7 +36,7 @@
   [^SpriteBatch batch ^BitmapFont font ^Texture pixel world]
   (when-let [hov (ui/hover)]
     (when-let [lines (inspect/describe-tile world hov)]
-      (let [vw       (.getWidth (Gdx/graphics))
+      (let [vw       (.getWidth Gdx/graphics)
             cap      (.getCapHeight font)
             line-h   (+ cap pad)
             layout   (GlyphLayout.)

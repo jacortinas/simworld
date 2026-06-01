@@ -59,8 +59,8 @@
   [{:keys [^SpriteBatch batch ^BitmapFont font ^Texture pixel
            ^com.badlogic.gdx.graphics.OrthographicCamera ui-cam
            app]}]
-  (let [vw      (.getWidth  (Gdx/graphics))
-        vh      (.getHeight (Gdx/graphics))
+  (let [vw      (.getWidth  Gdx/graphics)
+        vh      (.getHeight Gdx/graphics)
         wg      (:worldgen app)
         status  (:status wg)]
     (.setProjectionMatrix batch (.combined ui-cam))
@@ -114,8 +114,8 @@
     (touchDown [screen-x screen-y _pointer button]
       (if (and (= :failed (get-in @app/app [:worldgen :status]))
                (= (int button) Input$Buttons/LEFT))
-        (let [vw   (.getWidth  (Gdx/graphics))
-              vh   (.getHeight (Gdx/graphics))
+        (let [vw   (.getWidth  Gdx/graphics)
+              vh   (.getHeight Gdx/graphics)
               back (back-button-rect vw vh)
               y    (- vh screen-y)]
           (if (screens/inside? back screen-x y)

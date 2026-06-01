@@ -61,8 +61,8 @@
   (screens/draw-screen :play ctx)
 
   ;; 2. Darken the viewport with a translucent overlay.
-  (let [vw (.getWidth  (Gdx/graphics))
-        vh (.getHeight (Gdx/graphics))]
+  (let [vw (.getWidth  Gdx/graphics)
+        vh (.getHeight Gdx/graphics)]
     (.setProjectionMatrix batch (.combined ui-cam))
     (.begin batch)
     (.setColor batch overlay-color)
@@ -112,8 +112,8 @@
         false))
     (touchDown [screen-x screen-y _pointer button]
       (if (= (int button) Input$Buttons/LEFT)
-        (let [vw    (.getWidth  (Gdx/graphics))
-              vh    (.getHeight (Gdx/graphics))
+        (let [vw    (.getWidth  Gdx/graphics)
+              vh    (.getHeight Gdx/graphics)
               y     (- vh screen-y)
               rects (button-rects vw vh)]
           (cond

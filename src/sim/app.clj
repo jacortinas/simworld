@@ -119,7 +119,7 @@
    (e.g. in tests) or if libGDX hasn't initialized."
   [screen]
   (when-let [p (get @processors screen)]
-    (when-let [input (Gdx/input)]
+    (when-let [input Gdx/input]
       (.setInputProcessor input p))))
 
 (defn transition!
@@ -245,4 +245,4 @@
   "Ask libGDX to exit. The window's dispose then runs (which calls clock/stop!
    defensively), main thread falls through to shutdown-agents, process exits."
   []
-  (when-let [g (Gdx/app)] (.exit g)))
+  (when-let [g Gdx/app] (.exit g)))

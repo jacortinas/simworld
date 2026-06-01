@@ -57,14 +57,14 @@
    this every frame is fine. Screens call this near the end of their draw fn
    with their currently clickable rects."
   [rects]
-  (let [input  (Gdx/input)
-        vh     (.getHeight (Gdx/graphics))
+  (let [input  Gdx/input
+        vh     (.getHeight Gdx/graphics)
         x      (.getX input)
         y      (- vh (.getY input))
         cursor (if (hovered? rects x y)
                  Cursor$SystemCursor/Hand
                  Cursor$SystemCursor/Arrow)]
-    (.setSystemCursor (Gdx/graphics) cursor)))
+    (.setSystemCursor Gdx/graphics cursor)))
 
 (defn draw-button!
   "Draw a 1px-texture button: bordered rect + inset fill + centered label.

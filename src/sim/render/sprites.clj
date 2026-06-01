@@ -59,7 +59,7 @@
   (reset! images
           (into {}
                 (map (fn [path]
-                       (let [t (Texture. (.internal (Gdx/files) ^String path))]
+                       (let [t (Texture. (.internal Gdx/files ^String path))]
                          (.setFilter t Texture$TextureFilter/Nearest
                                      Texture$TextureFilter/Nearest)
                          [path t])))
@@ -73,7 +73,7 @@
   (reset! sheets
           (into {}
                 (map (fn [[k path]]
-                       (let [t (Texture. (.internal (Gdx/files) ^String path))]
+                       (let [t (Texture. (.internal Gdx/files ^String path))]
                          (.setFilter t Texture$TextureFilter/Nearest
                                      Texture$TextureFilter/Nearest)
                          [k t])))
