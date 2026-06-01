@@ -2,8 +2,9 @@
   "Connected-component labeling of the tile grid — RimWorld's reachability cache.
 
    PURPOSE: let find-path reject a doomed search in O(1). When start and goal are
-   both passable but lie in different connected components (separated by water,
-   later by walls), there is provably no route, so we return nil WITHOUT running
+   both passable but lie in different connected components (separated by
+   impassable terrain or player-built walls), there is provably no route, so we
+   return nil WITHOUT running
    A* over the whole reachable component to rediscover that.
 
    THE LOAD-BEARING RULE: region connectivity MUST equal A* connectivity, or
@@ -15,15 +16,16 @@
        cardinals passable (the corner rule — no slipping past a wall corner).
    Then reachable?(a,b) <=> (= region(a) region(b)) is EXACTLY 'A* finds a path'.
 
-   CACHING (the design decision): regions are a pure function of the IMMUTABLE
-   grid, so we memoize by GRID IDENTITY in a size-1 defonce atom (like the sprite
-   region cache / the defs DB). Unlike :kinds/:schedule — derived from the MUTABLE
-   entity set and maintained at an add/remove chokepoint — the grid has no such
-   chokepoint (set-tile is grid-level). A new grid value is a new identity, so the
-   next of-grid rebuilds: the cache CANNOT go stale, which matters because the
+   CACHING (the design decision): regions are a pure projection of the PathGrid
+   (terrain + buildings), so we memoize by PATHGRID IDENTITY in a size-1 defonce
+   atom (of-pathgrid). The PathGrid (sim.pathgrid) is itself memoized on [grid,
+   building-set] identity, so its identity flips exactly when passability changes
+   (a new grid, or a building add/remove). A new PathGrid is a new identity, so the
+   next of-pathgrid rebuilds: the cache CANNOT go stale, which matters because the
    staleness failure mode here is precisely the false negative. NOT in the world;
-   NOT saved. Depends only on sim.tile (pathfinding requires regions, never the
-   reverse — the graph stays acyclic)."
+   NOT saved. Depends on sim.pathgrid + sim.tile; pathfinding requires regions (and
+   pathgrid), never the reverse, so the graph stays acyclic. of-grid is a
+   terrain-only convenience (no buildings) for tests and terrain inspection."
   (:require
    [sim.pathgrid :as pathgrid]
    [sim.tile     :as tile]))
