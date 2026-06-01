@@ -90,6 +90,30 @@
     (is (= [[2 2]] (pathfinding/find-path w [2 2] [2 2])))))
 
 ;; ---------------------------------------------------------------------------
+;; Region short-circuit — find-path rejects a provably-doomed search in O(1)
+;; via sim.regions/reachable? (passable but different connected component) and,
+;; as a side effect, an impassable START (the reachability check is symmetric,
+;; where the old goal-only guard let A* step OUT of a wall).
+;; ---------------------------------------------------------------------------
+
+(deftest impassable-start-has-no-path
+  (testing "you cannot path out of a wall: an impassable start returns nil
+            (the old goal-only guard let A* expand from the impassable cell)"
+    (let [g (tile/set-tile (tile/make-grid 4 4) 0 0 :wall)]
+      (is (nil? (pathfinding/find-path (world-of g) [0 0] [3 3]))
+          "start on a wall is unreachable, even from an adjacent open cell"))))
+
+(deftest unreachable-passable-goal-returns-nil
+  (testing "a passable goal sealed in another component returns nil — the region
+            short-circuit (A* would otherwise explore the whole reachable
+            component just to conclude the same)"
+    (let [g (reduce (fn [g y] (tile/set-tile g 2 y :wall))
+                    (tile/make-grid 5 4)
+                    (range 4))]                         ; wall column splits the grid
+      (is (nil? (pathfinding/find-path (world-of g) [0 0] [4 0]))
+          "left-room start, right-room goal: no route across the wall"))))
+
+;; ---------------------------------------------------------------------------
 ;; Determinism — the tie-break is a TOTAL order (f, then linear index), so the
 ;; returned path is a total function of (grid, start, goal), independent of the
 ;; open-set container (this is what makes the future PriorityQueue swap safe).

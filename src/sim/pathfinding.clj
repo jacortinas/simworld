@@ -31,7 +31,8 @@
 
    The public API (find-path / traversal-cost) is stable."
   (:require
-   [sim.tile :as tile]))
+   [sim.regions :as regions]
+   [sim.tile    :as tile]))
 
 (set! *warn-on-reflection* true)
 
@@ -121,6 +122,14 @@
       (or (not (tile/in-bounds? width height sx sy))
           (not (tile/in-bounds? width height gx gy))
           (not (tile/passable? (tile/tile-at grid gx gy))))
+      nil
+
+      ;; O(1) doomed-path rejection (RimWorld's reachability cache): start and
+      ;; goal passable but in different connected components — provably no route,
+      ;; so skip A* entirely instead of letting it explore the whole reachable
+      ;; component to conclude the same. reachable? also rejects an impassable
+      ;; START (the goal-only guard above does not), since it checks both ends.
+      (not (regions/reachable? grid start goal))
       nil
 
       :else
