@@ -26,7 +26,11 @@
 ;; ---------------------------------------------------------------------------
 
 (s/def ::char      char?)
-(s/def ::move-cost (s/and number? pos?))
+;; >= 1.0, not merely positive: 1.0 is the move-cost baseline and the octile
+;; heuristic's per-step floor. Sub-1.0 ("faster than baseline") terrain would
+;; break A* consistency (sim.pathfinding) — allowing it must be a deliberate
+;; change (rescale the heuristic), not silent content. See sim.pathfinding.
+(s/def ::move-cost (s/and number? #(<= 1.0 (double %))))
 (s/def ::passable? boolean?)
 (s/def ::weight    (s/and number? pos?))
 (s/def ::decay      (s/and number? #(<= 0.0 (double %) 1.0)))

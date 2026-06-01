@@ -71,6 +71,27 @@
     (or (not (and flank-a (tile/passable? flank-a)))
         (not (and flank-b (tile/passable? flank-b))))))
 
+(defn- select-min
+  "The open-set key with the lowest (f-score, then linear index) — a TOTAL order,
+   so the popped node never depends on map-seq order. This is the determinism
+   precondition for the open-set container: a PriorityQueue resolves equal-f ties
+   by heap shape, so without an explicit secondary key the chosen route could
+   flip between equally-optimal paths. O(|open|) scan; the array/PQ rewrite
+   replaces the scan but keeps this exact (f, idx) order. Returns [key f idx]."
+  [open ^long width]
+  (reduce-kv
+   (fn [best k f]
+     (let [[x y] k
+           i     (tile/idx width x y)
+           f     (double f)]
+       (if (or (nil? best)
+               (< f (double (best 1)))
+               (and (= f (double (best 1))) (< i (long (best 2)))))
+         [k f i]
+         best)))
+   nil
+   open))
+
 (defn- reconstruct
   "Walk `came-from` from goal back to start and reverse."
   [came-from start goal]
@@ -109,7 +130,8 @@
 
    `world` is the live world map; we only read its :grid."
   [world start goal]
-  (let [grid (:grid world)]
+  (let [grid  (:grid world)
+        width (long (:width grid))]
     (cond
       (= start goal) [start]
 
@@ -123,7 +145,7 @@
              closed    #{}]
         (if (empty? open)
           nil
-          (let [[current _] (apply min-key val open)]
+          (let [current (first (select-min open width))]
             (if (= current goal)
               (reconstruct came-from start goal)
               (let [open'   (dissoc open current)

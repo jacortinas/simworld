@@ -79,6 +79,14 @@
   (testing "an unknown terrain falls back to grass's color (terrain falls back to grass)"
     (is (= (defs/terrain-color :grass) (defs/terrain-color :no-such-terrain)))))
 
+(deftest load-rejects-sub-baseline-move-cost
+  (testing "a terrain move-cost below 1.0 fails validation — the octile heuristic
+            floor (sim.pathfinding): faster-than-baseline terrain would break A*
+            consistency, so it must be a deliberate change here, not silent content"
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo #"(?i)move-cost"
+         (defs/load-sources! {:terrain [{:road {:move-cost 0.5 :passable? true}}]})))))
+
 (deftest load-rejects-out-of-range-color
   (testing "a terrain :color component above 1.0 fails validation"
     (is (thrown-with-msg?
