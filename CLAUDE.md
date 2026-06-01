@@ -152,6 +152,20 @@ namespaces (the directory rename happened early — never use `colony.*`).
   entity lifecycle flowing through them so the bucket index can't drift. The
   registry is a `defonce` atom; `register-system!` replaces by name, so reloads
   re-register idempotently.
+- **Kind-indexed entity queries (a second derived index).** Alongside the
+  scheduler's bucket index, `(:kinds world)` is a per-kind SORTED-SET of ids
+  (`{:pawn #{…} :item #{…} :tree #{…}}`). `entity/pawns|items|trees` read it, so a
+  kind query is O(of-that-kind), not an O(all-entities) `(filter (vals :entities))`
+  (it was run 3× per tick + per render layer per frame, nested in O(items×pawns)
+  deliberation). Same contract as the scheduler index: maintained at the
+  `add-entity`/`remove-entity` chokepoint (`index-kind`/`unindex-kind`), DERIVED —
+  never the source of truth, stripped on save, rebuilt on load by
+  `entity/reindex-kinds`. SORTED sets, not hash sets, so the queries iterate
+  ASCENDING BY ID: deterministic per-kind iteration with no per-call sort — the
+  precondition for parallel job execution (every worker must see entities in the
+  same order). `all-entities` stays `vals`-order (its consumers sort if they need
+  to). Still provisional: the entity-id counter is a process-global atom; it folds
+  into the world with the eventual column-store (decide the id scheme once there).
 - **Job-as-data with multimethod dispatch.** `(defmulti job/advance ...)`,
   dispatch on `(:type job)`. New job types are pure `defmethod` adds —
   zero touches elsewhere. Job types so far: `:go-to`, `:haul`, `:eat`.
@@ -224,8 +238,10 @@ namespaces (the directory rename happened early — never use `colony.*`).
 - **Reservations are a DERIVED query, not stored state.** `sim.reservation`
   answers "who claims target X" purely from the pawns' active jobs — each job
   encodes its target (`reserved-targets`: `:haul` → `[item-id]`; `:go-to` →
-  nothing). `claimant` returns the LOWEST-id active claimer (deterministic —
-  `vals` order is unspecified); `can-reserve?` is true if unclaimed or self.
+  nothing). `claimant` returns the LOWEST-id active claimer via `(apply min …)`
+  (deterministic regardless of iteration order — and now `(entity/pawns)` yields
+  pawns id-sorted via the `:kinds` index anyway, so the min is belt-and-
+  suspenders); `can-reserve?` is true if unclaimed or self.
   **Release is a non-event:** a cleared job's claim just vanishes, so there is no
   release fn to call and no "phantom reservation" bug class. Two enforcement
   points: (1) `sim.job/assign` refuses an AUTO (non-forced) job whose target is
@@ -349,8 +365,10 @@ old compiled loop body until `start!` respawns it.
 
 ## Open questions / not yet decided
 
-- **Items in `:entities` vs separate `:items` map.** Currently unified.
-  Revisit if item count balloons or filter expressions multiply.
+- **Items in `:entities` vs separate `:items` map.** Currently unified. UPDATE:
+  the `:kinds` index (per-kind sorted-set of ids) makes kind queries O(of-kind)
+  over the unified map, so the *performance* motive to split has largely
+  evaporated; revisit only if a kind needs a genuinely different storage shape.
 - **Carried items have `:pos nil`.** No visual indicator that a pawn is
   carrying something. Could add `@s` rendering when carrying — deferred
   until libGDX layers are in place.
@@ -373,8 +391,9 @@ old compiled loop body until `start!` respawns it.
   obstacle lands (walls built/removed, doors), add *step-validation*: before
   stepping, if the next cell is now impassable, nil `:path` so `walk-toward`'s
   existing `(nil? path)` branch replans for FREE — do NOT add recompute-every-
-  tick (the idiomatic A* here is the documented profiler hotspot, and uses an
-  O(n) open-set scan, not a priority queue). Later: a region graph for cheap
+  tick (A* is now the array-backed `java.util.PriorityQueue` implementation in
+  `sim.pathfinding` — fast, ~2-12× the old map-based scan, but a full replan
+  every tick is still wasteful). Later: a region graph for cheap
   reachability ("can A reach B?" without a full failed A* that explores the whole
   map) + hierarchical pathing — the HPA* endgame noted in `sim.pathfinding`. This
   is RimWorld's model (regions + reachability cache + dirty-on-build + per-step
@@ -403,7 +422,8 @@ old compiled loop body until `start!` respawns it.
 - `resources/defs/{terrain,materials,needs,things}.edn` — game content (move-cost/
   passable?/char; weight/char; per-need decay; per-type construction templates —
   kind, ticker-type, starting needs, move-ticks, material). Edit + `(reload-defs!)` to retune.
-- `src/sim/world.clj` — the atom + initial-state shape (incl. `:schedule`)
+- `src/sim/world.clj` — the atom + initial-state shape (incl. the derived
+  `:schedule` and `:kinds` indexes)
 - `src/sim/simulation.clj` — the pure tick function + band-system defs/registration
 - `src/sim/schedule.clj` — tick-band scheduler: bucket math, the derived bucket
   index, the band→systems registry, `run`/`run*`, `reindex`
@@ -414,7 +434,10 @@ old compiled loop body until `start!` respawns it.
   (ticks to cross a cell) + `walk-toward` (the sub-cell progress accumulator)
 - `src/sim/pathfinding.clj` — 8-directional A*: `find-path` + `traversal-cost`
   (the unified terrain×√2-diagonal cost A* and movement share); octile heuristic,
-  corner rule
+  corner rule. Internals are primitive-array state (g/came-from/closed) + a
+  `java.util.PriorityQueue` open set ordered by a total `(f, idx)` key; `traversal-
+  cost` stays the public cost currency. octile consistency needs `move-cost ≥ 1.0`
+  (enforced by `defs ::move-cost`).
 - `src/sim/reservation.clj` — PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
   stored state, release is automatic. Depends only on `sim.entity`.
