@@ -1,26 +1,35 @@
 (ns sim.pathfinding
   "8-directional A* pathfinding over the tile grid.
 
-   This is the IDIOMATIC implementation — persistent maps for open/closed
-   sets, allocation per neighbor expansion. It is correct and readable;
-   it is also the place that will show up first in a profiler once we have
-   a few pawns asking for paths on larger maps.
+   The search state is flattened onto per-call PRIMITIVE ARRAYS keyed by the
+   linear tile index (+ x (* y width)): g-score (double-array), came-from
+   predecessor (int-array, -1 = none), and a closed boolean-array. The open set
+   is a java.util.PriorityQueue of Entry records ordered by (f-score, then
+   index). That secondary key makes the order TOTAL, so the returned path is a
+   function of (grid, start, goal) alone — never of heap shape — which is the
+   determinism guarantee, and is what made the swap off the old persistent-map
+   open set safe (see the (f, idx) tie-break that landed first).
 
-   Diagonals are allowed (neighbors-8). A diagonal step costs ×√2 so it is
-   never a free shortcut, and the corner rule forbids slipping diagonally past
-   an impassable cell. `traversal-cost` is the unified currency A* minimizes AND
-   movement spends (sim.job multiplies it by the pawn's base move-ticks), so the
-   route A* prefers is exactly the route that is fastest to walk.
+   Diagonals are allowed. A diagonal step costs ×√2 so it is never a free
+   shortcut, and the corner rule forbids slipping diagonally past an impassable
+   cell. `traversal-cost` is the unified currency A* minimizes AND movement
+   spends (sim.job multiplies it by the pawn's base move-ticks), so the route A*
+   prefers is exactly the route that is fastest to walk. The hot loop computes
+   the same cost from a per-search terrain snapshot (a cost/passable array pair),
+   so it never deref's the defs registry per neighbor.
 
-   The optimization path documented in the architecture notes:
-     1. Flatten cost / came-from to primitive arrays (long-array/int-array)
-        indexed by (+ x (* y width)).
-     2. Open set as java.util.PriorityQueue keyed by f-score.
-     3. Type-hint everything, (set! *unchecked-math* true) in the hot ns.
-     4. Hierarchical A* (HPA*) for large maps with frequent re-paths.
+   The octile heuristic is admissible AND consistent for this grid ONLY because
+   the cheapest passable step is >= 1.0 (sim.defs enforces ::move-cost >= 1.0).
+   Consistency is what lets A* finalize a node at its first non-closed poll: no
+   decrease-key and no reopening — stale queue entries are simply skipped (lazy
+   deletion). A sub-1.0 terrain would break this; that is why it is forbidden at
+   the content layer rather than guarded here.
 
-   We are not doing that yet. The public API (find-path / traversal-cost) stays
-   stable so the optimization is a drop-in replacement."
+   Remaining endgame (architecture notes): per-worker scratch buffers + a
+   generation stamp to skip the per-call array fills, then hierarchical A* (HPA*)
+   with a region/reachability cache for large maps with frequent re-paths.
+
+   The public API (find-path / traversal-cost) is stable."
   (:require
    [sim.tile :as tile]))
 
@@ -35,13 +44,14 @@
   [[^long fx ^long fy] [^long tx ^long ty]]
   (and (not= fx tx) (not= fy ty)))
 
-(defn- octile
-  "Octile distance heuristic — the diagonal-aware cousin of Manhattan:
-   D·(dx+dy) + (D2−2D)·min(dx,dy), with cardinal cost D=1 and diagonal D2=√2.
-   Admissible for 8-connected grids whose cheapest passable step is 1.0 (grass
-   is the move-cost floor): plain Manhattan would over-estimate diagonal moves
-   and make A* return non-optimal paths."
-  ^double [[^long x1 ^long y1] [^long x2 ^long y2]]
+(defn- octile*
+  "Octile distance heuristic between (x1,y1) and (x2,y2) — the diagonal-aware
+   cousin of Manhattan: (dx+dy) + (√2−2)·min(dx,dy), cardinal cost 1, diagonal
+   √2. Admissible AND consistent for this 8-grid IFF the cheapest passable step
+   is >= 1.0 (enforced by sim.defs ::move-cost); plain Manhattan would
+   over-estimate diagonals and make A* return non-optimal paths. Primitive args
+   so the A* hot loop allocates nothing to score a node."
+  ^double [^long x1 ^long y1 ^long x2 ^long y2]
   (let [dx (Math/abs (- x1 x2))
         dy (Math/abs (- y1 y2))]
     (+ (double (+ dx dy))
@@ -53,7 +63,9 @@
    or impassable. `from` is only read to detect diagonality.
 
    This is the shared currency: A* sums it to score a route, and sim.job
-   multiplies it by a pawn's base move-ticks to time the actual walk."
+   multiplies it by a pawn's base move-ticks to time the actual walk. The A* hot
+   loop computes the same value from its terrain snapshot — keep them in agreement
+   (the oracle property test checks optimal cost under THIS fn)."
   ^double [grid from to]
   (let [[tx ty] to
         t       (tile/tile-at grid tx ty)]
@@ -61,99 +73,111 @@
       (* (tile/move-cost t) (if (diagonal? from to) root2 1.0))
       Double/POSITIVE_INFINITY)))
 
-(defn- corner-blocked?
-  "True when a DIAGONAL step from `from` to `to` would cut past an impassable
-   flanking cell. The two cells flanking the diagonal are the cardinals it
-   slips between; if either is impassable (or off-grid), the cut is refused."
-  [grid [^long fx ^long fy] [^long tx ^long ty]]
-  (let [flank-a (tile/tile-at grid tx fy)
-        flank-b (tile/tile-at grid fx ty)]
-    (or (not (and flank-a (tile/passable? flank-a)))
-        (not (and flank-b (tile/passable? flank-b))))))
+;; The 8 neighbor offsets, as parallel index arrays (no per-node seq/vector
+;; allocation). Order is irrelevant to the result — the (f, idx) tie-break
+;; decides between equal-cost routes, not emission order.
+(def ^:private ^"[I" n-dx (int-array [-1 -1 -1  0 0  1 1 1]))
+(def ^:private ^"[I" n-dy (int-array [-1  0  1 -1 1 -1 0 1]))
 
-(defn- select-min
-  "The open-set key with the lowest (f-score, then linear index) — a TOTAL order,
-   so the popped node never depends on map-seq order. This is the determinism
-   precondition for the open-set container: a PriorityQueue resolves equal-f ties
-   by heap shape, so without an explicit secondary key the chosen route could
-   flip between equally-optimal paths. O(|open|) scan; the array/PQ rewrite
-   replaces the scan but keeps this exact (f, idx) order. Returns [key f idx]."
-  [open ^long width]
-  (reduce-kv
-   (fn [best k f]
-     (let [[x y] k
-           i     (tile/idx width x y)
-           f     (double f)]
-       (if (or (nil? best)
-               (< f (double (best 1)))
-               (and (= f (double (best 1))) (< i (long (best 2)))))
-         [k f i]
-         best)))
-   nil
-   open))
+;; Open-set entry: a node index with its f-score, frozen at push time. Ordered
+;; by (f asc, idx asc) — a TOTAL order, so heap shape can't change the result.
+(deftype Entry [^double f ^int idx]
+  Comparable
+  (compareTo [_ other]
+    (let [o ^Entry other
+          c (Double/compare f (.f o))]
+      (if (zero? c) (Integer/compare idx (.idx o)) c))))
 
-(defn- reconstruct
-  "Walk `came-from` from goal back to start and reverse."
-  [came-from start goal]
-  (loop [node goal acc (list goal)]
-    (if (= node start)
-      (vec acc)
-      (let [prev (came-from node)]
-        (if (nil? prev)
-          nil
-          (recur prev (conj acc prev)))))))
-
-(defn- expand-neighbor
-  "Reducing step: given the current A* state and one neighbor position,
-   return possibly-updated [open g-score came-from]. Skips closed neighbors,
-   impassable steps, and diagonal steps that would cut a wall corner."
-  [grid closed' current goal [open g-score came-from] npos]
-  (if (or (closed' npos)
-          (and (diagonal? current npos) (corner-blocked? grid current npos)))
-    [open g-score came-from]
-    (let [step (traversal-cost grid current npos)]
-      (if (Double/isInfinite step)
-        [open g-score came-from]
-        (let [g-cur     (double (g-score current))
-              tentative (+ g-cur step)
-              best      (double (g-score npos Double/POSITIVE_INFINITY))]
-          (if (< tentative best)
-            [(assoc open npos (+ tentative (octile npos goal)))
-             (assoc g-score npos tentative)
-             (assoc came-from npos current)]
-            [open g-score came-from]))))))
+(defn- reconstruct-idx
+  "Walk the came-from int-array from goal-idx back to start-idx, decoding each
+   linear index to [x y]; returns the start->goal vector. The -1 sentinel is a
+   defensive corrupt-state guard (a consistent heuristic always links goal back
+   to start) — hitting it returns nil, mirroring the old reconstruct."
+  [^ints came-from ^long width ^long start-idx ^long goal-idx]
+  (loop [i goal-idx acc '()]
+    (let [acc (conj acc [(rem i width) (quot i width)])]
+      (if (== i start-idx)
+        (vec acc)
+        (let [p (aget came-from (int i))]
+          (if (neg? p) nil (recur (long p) acc)))))))
 
 (defn find-path
   "Find a path from start [x y] to goal [x y] over the world's grid, stepping in
    8 directions. Returns a vector of [x y] tiles inclusive of start and goal, or
-   nil if no path exists.
-
-   `world` is the live world map; we only read its :grid."
+   nil if no path exists. `world` is the live world map; we only read its :grid."
   [world start goal]
-  (let [grid  (:grid world)
-        width (long (:width grid))]
+  (let [grid   (:grid world)
+        width  (long (:width grid))
+        height (long (:height grid))
+        sx     (long (first start))
+        sy     (long (second start))
+        gx     (long (first goal))
+        gy     (long (second goal))]
     (cond
-      (= start goal) [start]
+      (and (== sx gx) (== sy gy)) [start]
 
-      (not (tile/passable? (tile/tile-at grid (first goal) (second goal))))
+      ;; Guard start AND goal: the sized arrays would throw on an out-of-bounds
+      ;; goal that the old map-based search merely failed to reach.
+      (or (not (tile/in-bounds? width height sx sy))
+          (not (tile/in-bounds? width height gx gy))
+          (not (tile/passable? (tile/tile-at grid gx gy))))
       nil
 
       :else
-      (loop [open      {start 0.0}     ;; pos -> f-score
-             g-score   {start 0.0}     ;; pos -> g-score
-             came-from {}              ;; pos -> previous pos
-             closed    #{}]
-        (if (empty? open)
-          nil
-          (let [current (first (select-min open width))]
-            (if (= current goal)
-              (reconstruct came-from start goal)
-              (let [open'   (dissoc open current)
-                    closed' (conj closed current)
-                    [cx cy] current
-                    [open'' g-score' came-from']
-                    (reduce
-                     (partial expand-neighbor grid closed' current goal)
-                     [open' g-score came-from]
-                     (tile/neighbors-8 grid cx cy))]
-                (recur open'' g-score' came-from' closed')))))))))
+      (let [n         (* width height)
+            tiles     (:tiles grid)
+            cost      (double-array n)
+            passable  (boolean-array n)
+            g-score   (double-array n Double/POSITIVE_INFINITY)
+            came-from (int-array n -1)
+            closed    (boolean-array n)
+            ^java.util.PriorityQueue pq (java.util.PriorityQueue.)
+            start-idx (int (+ sx (* sy width)))
+            goal-idx  (int (+ gx (* gy width)))]
+        ;; Per-search terrain snapshot: resolve each cell's cost/passability once
+        ;; so the hot loop reads arrays, never the defs registry.
+        (dotimes [i n]
+          (let [t (nth tiles i)
+                p (boolean (tile/passable? t))]
+            (aset passable i p)
+            (aset cost i (if p (double (tile/move-cost t)) Double/POSITIVE_INFINITY))))
+        (aset g-score start-idx 0.0)
+        (.add pq (Entry. (octile* sx sy gx gy) start-idx))
+        (loop []
+          (if (.isEmpty pq)
+            nil
+            (let [e   ^Entry (.poll pq)
+                  cur (.idx e)]
+              (cond
+                (== cur goal-idx) (reconstruct-idx came-from width start-idx goal-idx)
+                (aget closed cur) (recur)               ; stale entry, node already final
+                :else
+                (do
+                  (aset closed cur true)
+                  (let [cx (rem cur width)
+                        cy (quot cur width)
+                        gc (aget g-score cur)]
+                    (dotimes [k 8]
+                      (let [dx (aget n-dx k)
+                            dy (aget n-dy k)
+                            nx (+ cx dx)
+                            ny (+ cy dy)]
+                        (when (and (>= nx 0) (< nx width) (>= ny 0) (< ny height))
+                          (let [nidx (int (+ nx (* ny width)))]
+                            (when (and (not (aget closed nidx))
+                                       (aget passable nidx))
+                              (let [diag (and (not (zero? dx)) (not (zero? dy)))]
+                                ;; corner rule: a diagonal is refused if either
+                                ;; flanking cardinal is impassable. Both flanks are
+                                ;; in-bounds whenever the diagonal neighbor is.
+                                (when-not (and diag
+                                               (or (not (aget passable (int (+ nx (* cy width)))))
+                                                   (not (aget passable (int (+ cx (* ny width)))))))
+                                  (let [step      (* (aget cost nidx) (if diag root2 1.0))
+                                        tentative (+ gc step)]
+                                    (when (< tentative (aget g-score nidx))
+                                      (aset g-score nidx tentative)
+                                      (aset came-from nidx cur)
+                                      (.add pq (Entry. (+ tentative (octile* nx ny gx gy))
+                                                       nidx)))))))))))
+                    (recur)))))))))))
