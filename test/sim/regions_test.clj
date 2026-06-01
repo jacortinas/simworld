@@ -7,6 +7,8 @@
   (:require
    [clojure.test    :refer [deftest is testing]]
    [sim.tile        :as tile]
+   [sim.entity      :as entity]
+   [sim.pathgrid    :as pathgrid]
    [sim.regions     :as regions]
    [sim.pathfinding :as pathfinding]))
 
@@ -103,4 +105,41 @@
                   label (str s "->" g " on " w "x" h)]
               (is (= (regions/reachable? {:grid grid} s g)
                      (some? (pathfinding/find-path {:grid grid} s g)))
+                  (str "reachable? must match find-path for " label)))))))))
+
+;; ---------------------------------------------------------------------------
+;; ORACLE PROPERTY WITH BUILDINGS: the same guard, now with runtime walls.
+;; Walls are :building entities added through the chokepoint, so the PathGrid
+;; (and thus both regions/reachable? and find-path) reflect them. A false
+;; negative once walls block routes is the unacceptable bug this fuzzes against.
+;; ---------------------------------------------------------------------------
+
+(deftest reachable-matches-find-path-with-buildings
+  (testing "with random wall buildings added through the chokepoint, reachable?
+            still <=> find-path succeeds, for every passable pair"
+    (let [rng      (java.util.Random. 424242)
+          ri       (fn [n] (.nextInt rng (int n)))
+          terrains [:grass :grass :dirt :gravel :water :stone]]
+      (dotimes [_ 200]
+        (let [w     (+ 4 (ri 6))
+              h     (+ 4 (ri 6))
+              cells (vec (repeatedly (* w h) #(nth terrains (ri (count terrains)))))
+              grid  {:width w :height h :tiles cells}
+              base  {:grid grid :entities {} :kinds (entity/empty-kinds)}
+              ;; add a handful of wall buildings on passable, distinct cells
+              world (reduce (fn [wd _]
+                              (let [x (ri w) y (ri h)]
+                                (if (passable-at? (:grid wd) x y)
+                                  (entity/add-entity wd (entity/make-building [x y]))
+                                  wd)))
+                            base
+                            (range (ri 6)))
+              p-idx (filterv #(pathgrid/passable? (pathgrid/for-world world) (mod % w) (quot % w))
+                             (range (* w h)))]
+          (when (seq p-idx)
+            (let [pick #(let [i (nth p-idx (ri (count p-idx)))] [(mod i w) (quot i w)])
+                  s    (pick) g (pick)
+                  label (str s "->" g " on " w "x" h)]
+              (is (= (regions/reachable? world s g)
+                     (some? (pathfinding/find-path world s g)))
                   (str "reachable? must match find-path for " label)))))))))
