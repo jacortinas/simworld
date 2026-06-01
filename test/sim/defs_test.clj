@@ -107,11 +107,19 @@
   (testing "an unknown thing-def is nil (callers fail-fast at construction)"
     (is (nil? (defs/thing :no-such-thing)))))
 
+(deftest wall-thing-def-is-a-building-blocker
+  (defs/load!)
+  (let [w (defs/thing :wall)]
+    (is (= :building (:kind w)) "wall is a building-kind thing-def")
+    (is (true? (:blocks-path? w)) "wall blocks pathing")
+    (is (= :stone (:material w)))
+    (is (= :wall (:graphic w)))))
+
 (deftest thing-defs-load-and-validate
   (testing "the bundled registry includes the :thing category"
     (is (contains? (defs/load!) :thing)))
   (testing "ids enumerates every shipped thing type"
-    (is (= #{:colonist :tree :wood :food :stone} (defs/ids :thing)))))
+    (is (= #{:colonist :tree :wood :food :stone :wall} (defs/ids :thing)))))
 
 (deftest load-rejects-malformed-thing-entry
   (testing "an unknown :ticker-type throws (the band set is closed)"

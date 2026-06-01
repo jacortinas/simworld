@@ -11,4 +11,6 @@
  :tree     {:kind :tree :ticker-type :never :graphic :tree}
  :wood     {:kind :item :ticker-type :long :material :wood  :graphic :wood}
  :food     {:kind :item :ticker-type :long :material :food  :graphic :apple}
- :stone    {:kind :item :ticker-type :long :material :stone :graphic :rock}}
+ :stone    {:kind :item :ticker-type :long :material :stone :graphic :rock}
+ :wall     {:kind :building :ticker-type :long :material :stone
+            :graphic :wall :blocks-path? true}}

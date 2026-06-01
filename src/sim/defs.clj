@@ -47,10 +47,11 @@
 (s/def ::move-ticks  (s/and number? pos?))
 (s/def ::needs       (s/map-of keyword? (s/and number? #(<= 0.0 (double %) 1.0))))
 (s/def ::material    keyword?)                 ; item thing-def -> materials.edn stuff ref
-(s/def ::traits      (s/coll-of keyword? :kind set?))
-(s/def ::skills      (s/map-of keyword? number?))
+(s/def ::traits       (s/coll-of keyword? :kind set?))
+(s/def ::skills       (s/map-of keyword? number?))
+(s/def ::blocks-path? boolean?)
 (s/def ::thing-entry (s/keys :req-un [::kind ::ticker-type]
-                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic]))
+                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic ::blocks-path?]))
 
 ;; --- graphic defs: sprite selection as content (the render-side axis) ---
 (s/def ::cell        (s/tuple keyword? nat-int? nat-int?))   ; [sheet col row]
