@@ -73,6 +73,15 @@
       (is (= (:grid a) (:grid b)))
       (is (= (strip a) (strip b))))))
 
+(deftest generate-captures-resolved-seed-into-rng-seed
+  (testing "the generated world carries the seed it was built from in :rng-seed,
+            so sim-time RNG and terrain generation share ONE seed (they were
+            decoupled before: the world kept initial-world's stale default)"
+    (is (= 424242 (:rng-seed (gen {:seed 424242 :width 48 :height 48})))
+        "an explicit :seed is recorded into the world")
+    (is (= 7 (:rng-seed (gen test-opts)))
+        "test-opts :seed 7 is recorded into the world")))
+
 (deftest reset-world-generate-opt
   (testing "reset-world! {:generate? true} produces a varied, populated world"
     ;; This test mutates the shared world/world atom. Capture and restore the

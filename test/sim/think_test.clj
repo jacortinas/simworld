@@ -67,6 +67,24 @@
     (is (= :go-to (:type j)))
     (is (some? (:target j)) "wander targets a cell")))
 
+(deftest wander-is-deterministic
+  (testing "deliberate is a pure function of (world, pawn): same inputs -> same
+            wander target, seeded from the world's :rng-seed (not global rand)"
+    (let [[w pid] (world+pawn {:food 1.0} [5 5])
+          p       (entity/entity w pid)
+          targets (repeatedly 20 #(:target (think/deliberate w p)))]
+      (is (apply = targets) "20 deliberations yield one stable target"))))
+
+(deftest wander-target-depends-on-seed-and-tick
+  (testing "the chosen cell is a function of (:rng-seed, :clock, pawn id), so it
+            varies across seeds and across ticks (a re-wandering pawn moves on)"
+    (let [[w0 pid] (world+pawn {:food 1.0} [5 5])
+          tgt      (fn [w] (:target (think/deliberate w (entity/entity w pid))))
+          by-seed  (map #(tgt (assoc w0 :rng-seed %)) (range 10))
+          by-tick  (map #(tgt (assoc w0 :clock %))    (range 10))]
+      (is (> (count (distinct by-seed)) 1) "target depends on the seed")
+      (is (> (count (distinct by-tick)) 1) "target depends on the tick"))))
+
 (deftest haul-giver-yields-haul-job
   (testing "fed pawn + loose item + stockpile -> :haul job to a stockpile cell"
     (let [[w0 pid] (world+pawn {:food 1.0} [0 0])

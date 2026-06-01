@@ -64,8 +64,10 @@
                      w)))))
 
 (defn spawn-pawn!
-  "Drop a new pawn into the live world at [x y]."
-  ([pos] (spawn-pawn! (str "pawn-" (rand-int 1000)) pos))
+  "Drop a new pawn into the live world at [x y]. The 1-arg default name is
+   count-based (`pawn-N`), not random: distinct per spawn AND deterministic, so
+   it never perturbs a same-seed run (was `(rand-int 1000)`)."
+  ([pos] (spawn-pawn! (str "pawn-" (count (entity/pawns @world))) pos))
   ([name pos]
    (let [p (entity/make-pawn name pos)]
      (swap! world entity/add-entity p)

@@ -144,11 +144,15 @@
 
 (defn init-state
   "Build the initial pipeline state. Seed resolution: opts :seed, else the
-   world's :rng-seed, else the default."
+   world's :rng-seed, else the default. The resolved seed is CAPTURED back into
+   the world's :rng-seed, so the generated world's sim-time RNG and its terrain
+   share one seed (previously decoupled: the world kept initial-world's stale
+   default). Resolution reads the INPUT world's :rng-seed, so the capture is not
+   self-referential."
   [world opts]
   (let [seed (or (:seed opts) (:rng-seed world) (:seed default-opts))
         opts (merge default-opts opts {:seed seed})]
-    {:world world :seed (long seed) :opts opts :reachable nil}))
+    {:world (assoc world :rng-seed (long seed)) :seed (long seed) :opts opts :reachable nil}))
 
 (def default-pipeline
   "Ordered vector of passes. Plan 1: terrain phase (base-pass) then detail

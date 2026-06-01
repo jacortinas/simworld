@@ -13,6 +13,7 @@
    [sim.entity      :as entity]
    [sim.job         :as job]
    [sim.reservation :as reservation]
+   [sim.rng         :as rng]
    [sim.tile        :as tile]
    [sim.zone        :as zone]))
 
@@ -58,7 +59,11 @@
 (def ^:const ^:private wander-radius 5)
 
 (defn- wander-target
-  "A random passable cell within wander-radius of the pawn, or nil if boxed in."
+  "A passable cell within wander-radius of the pawn, or nil if boxed in. Seeded
+   deterministically from (world :rng-seed, tick, pawn id): the choice is a pure
+   function of (world, pawn) — same inputs pick the same cell, and it varies
+   across pawns and across ticks WITHOUT coupling to entity iteration order
+   (the determinism the parallel-job path needs; see sim.rng)."
   [world pawn]
   (let [{:keys [width height] :as grid} (:grid world)
         [x y]  (:pos pawn)
@@ -68,8 +73,9 @@
                      :when (and (not (and (zero? dx) (zero? dy)))
                                 (tile/in-bounds? width height nx ny)
                                 (tile/passable? (tile/tile-at grid nx ny)))]
-                 [nx ny])]
-    (when (seq cells) (rand-nth (vec cells)))))
+                 [nx ny])
+        seed   (rng/derive-seed (:rng-seed world 0) (:clock world 0) (:id pawn))]
+    (first (rng/pick seed cells))))
 
 (defn- give-wander
   "Mint a go-to job to a random nearby passable cell (the aimless fallback)."

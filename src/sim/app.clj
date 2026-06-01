@@ -13,6 +13,7 @@
    the *logic* lives in the pure fn."
   (:require
    [sim.clock    :as clock]
+   [sim.rng      :as rng]
    [sim.tile     :as tile]
    [sim.world    :as world]
    [sim.worldgen :as worldgen])
@@ -150,6 +151,10 @@
       (set-processor! :worldgen)
       (future
         (try
+          ;; nanoTime is the DELIBERATE "fresh world per New Colony" seed source.
+          ;; worldgen/generate captures it into the world's :rng-seed, so the run
+          ;; is replayable/bit-identical from that seed (pass an explicit :seed to
+          ;; reproduce one). This is the only sanctioned nanoTime->seed path.
           (let [seed   (System/nanoTime)
                 opts   {:seed seed
                         :on-phase (fn [phase]
@@ -191,7 +196,11 @@
       (throw (ex-info "seed-colony!: not enough walkable tiles"
                       {:grid-size [(:width grid) (:height grid)]
                        :found     (count tiles)})))
-    (let [names (vec (take 3 (shuffle starter-names)))]
+    ;; Seed the name shuffle from the world's :rng-seed (set by worldgen) so the
+    ;; same seed assigns the same names — colony setup is reproducible, not a
+    ;; global `shuffle`.
+    (let [seed  (:rng-seed @world/world 0)
+          names (vec (take 3 (first (rng/shuffle seed starter-names))))]
       (dotimes [i 3]
         (world/spawn-pawn! (nth names i) (nth tiles i))))))
 
