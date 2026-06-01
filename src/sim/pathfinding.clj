@@ -14,9 +14,10 @@
    shortcut, and the corner rule forbids slipping diagonally past an impassable
    cell. `traversal-cost` is the unified currency A* minimizes AND movement
    spends (sim.job multiplies it by the pawn's base move-ticks), so the route A*
-   prefers is exactly the route that is fastest to walk. The hot loop computes
-   the same cost from a per-search terrain snapshot (a cost/passable array pair),
-   so it never deref's the defs registry per neighbor.
+   prefers is exactly the route that is fastest to walk. The hot loop reads the
+   shared, memoized PathGrid cost array (sim.pathgrid: terrain move-costs with
+   building blockers stamped INFINITY), so it never builds a per-search snapshot
+   or deref's the defs registry per neighbor.
 
    The octile heuristic is admissible AND consistent for this grid ONLY because
    the cheapest passable step is >= 1.0 (sim.defs enforces ::move-cost >= 1.0).
@@ -66,8 +67,9 @@
 
    This is the shared currency: A* sums it to score a route, and sim.job
    multiplies it by a pawn's base move-ticks to time the actual walk. The A* hot
-   loop computes the same value from its terrain snapshot — keep them in agreement
-   (the oracle property test checks optimal cost under THIS fn)."
+   loop reads the same values via the shared PathGrid cost array (built from these
+   terrain move-costs), so keep them in agreement (the oracle property test checks
+   optimal cost under THIS fn)."
   ^double [grid from to]
   (let [[tx ty] to
         t       (tile/tile-at grid tx ty)]

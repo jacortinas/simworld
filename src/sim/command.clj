@@ -37,7 +37,7 @@
 
 (defn can-build-wall?
   "True if a wall may be placed at [x y]: in-bounds, terrain passable, no pawn
-   on the cell, and no existing building there. Pure — shared by the build
+   on the cell, and no existing building there. Pure; shared by the build
    cursor indicator and build-wall!."
   [world [x y]]
   (let [grid (:grid world)]
