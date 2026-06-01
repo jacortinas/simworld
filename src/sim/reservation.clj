@@ -34,10 +34,11 @@
 
 (defn claimant
   "The id of the pawn whose active job claims `target`, or nil. Resolves ties to
-   the LOWEST id (not merely the first found): (entity/pawns) walks vals, whose
-   order is unspecified, so taking the min makes the result deterministic — and
-   lets a future parallel reconcile pick the same winner regardless of thread
-   scheduling."
+   the LOWEST id (not merely the first found). (entity/pawns) now yields pawns
+   ascending by id, so the min is belt-and-suspenders rather than the sole
+   guarantee — but it's kept deliberately: this fn must not couple its
+   correctness to another namespace's sort invariant, and the min lets a future
+   parallel reconcile pick the same winner regardless of thread scheduling."
   [world target]
   (let [ids (->> (entity/pawns world)
                  (filter (fn [p] (and (active? (:job p))

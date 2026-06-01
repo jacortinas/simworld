@@ -26,10 +26,14 @@
       (binding [save/*save-dir* (temp-dir)]
         (save/save! w "rt")
         (let [loaded (save/load! "rt")]
-          (is (= (dissoc w :schedule) (dissoc loaded :schedule))
+          (is (= (dissoc w :schedule :kinds) (dissoc loaded :schedule :kinds))
               "all non-derived state is byte-identical across the round-trip")
           (is (some? (:schedule loaded))
-              "the derived schedule index is rebuilt on load, not read from disk"))))))
+              "the derived schedule index is rebuilt on load, not read from disk")
+          (is (some? (:kinds loaded))
+              "the derived kinds index is rebuilt on load, not read from disk")
+          (is (= (:kinds w) (:kinds loaded))
+              "the rebuilt kinds index matches the incrementally-maintained one"))))))
 
 (deftest load-reseeds-id-counter
   (testing "a save loaded into a fresh process (counter at 0) can't reuse a loaded id"

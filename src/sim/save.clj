@@ -28,23 +28,26 @@
 
 (defn save!
   "Freeze the world to saves/<slot>.npy. Default slot is 'autosave'.
-   The :schedule bucket index is DERIVED state — stripped before freezing
-   (smaller saves, no drift) and rebuilt on load via schedule/reindex."
+   The :schedule bucket index and :kinds id index are DERIVED state — stripped
+   before freezing (smaller saves, no drift) and rebuilt on load via
+   schedule/reindex and entity/reindex-kinds."
   ([world] (save! world "autosave"))
   ([world slot]
    (ensure-dir!)
-   (nippy/freeze-to-file (path slot) (dissoc world :schedule))
+   (nippy/freeze-to-file (path slot) (dissoc world :schedule :kinds))
    slot))
 
 (defn load!
-  "Thaw saves/<slot>.npy, rebuild the derived schedule index, and re-seed the
-   process-global entity id counter past the loaded ids. Returns the world value
-   (does NOT touch the WORLD atom — but DOES advance the id counter, the one
-   entity invariant a frozen save can't carry; see entity/seed-id-counter!).
-   Handles both new (stripped) saves and older saves lacking :schedule. Throws
-   if the file is missing or corrupt."
+  "Thaw saves/<slot>.npy, rebuild the derived indexes (:schedule and :kinds), and
+   re-seed the process-global entity id counter past the loaded ids. Returns the
+   world value (does NOT touch the WORLD atom — but DOES advance the id counter,
+   the one entity invariant a frozen save can't carry; see entity/seed-id-counter!).
+   Handles both new (stripped) saves and older saves lacking the derived indexes.
+   Throws if the file is missing or corrupt."
   ([] (load! "autosave"))
   ([slot]
-   (let [world (schedule/reindex (nippy/thaw-from-file (path slot)))]
+   (let [world (-> (nippy/thaw-from-file (path slot))
+                   schedule/reindex
+                   entity/reindex-kinds)]
      (entity/seed-id-counter! world)
      world)))

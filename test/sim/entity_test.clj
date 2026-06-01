@@ -86,3 +86,62 @@
     (is (= :rock  (:graphic (entity/make-item :stone [1 1])))))
   (testing "a tree carries the tree graphic"
     (is (= :tree (:graphic (entity/make-tree [2 2]))))))
+
+;; ---------------------------------------------------------------------------
+;; :kinds index — a DERIVED per-kind id index maintained at the
+;; add-entity/remove-entity chokepoint (mirrors :schedule). pawns/items/trees
+;; read it, so they yield ids in ascending order (a sorted-set per kind).
+;; ---------------------------------------------------------------------------
+
+(deftest empty-kinds-shape
+  (let [k (entity/empty-kinds)]
+    (is (= #{:pawn :item :tree} (set (keys k))) "the three known kinds")
+    (is (every? empty? (vals k)) "each starts empty")
+    (is (every? sorted? (vals k)) "each is a sorted set, so queries iterate ascending by id")))
+
+(deftest add-entity-maintains-kinds-index
+  (testing "add-entity inserts the id into the matching kind set; remove-entity clears it"
+    (let [pawn (entity/make-pawn "P" [0 0])
+          tree (entity/make-tree [1 1])
+          w    (-> {:entities {} :kinds (entity/empty-kinds)}
+                   (entity/add-entity pawn)
+                   (entity/add-entity tree))]
+      (is (contains? (get-in w [:kinds :pawn]) (:id pawn)))
+      (is (contains? (get-in w [:kinds :tree]) (:id tree)))
+      (is (not (contains? (get-in w [:kinds :item]) (:id pawn))) "wrong-kind sets untouched")
+      (let [w' (entity/remove-entity w (:id pawn))]
+        (is (not (contains? (get-in w' [:kinds :pawn]) (:id pawn))) "remove clears the index")))))
+
+(deftest add-entity-indexes-without-preexisting-kinds
+  (testing "add-entity fnil-creates the kind set on a world lacking :kinds"
+    (let [pawn (entity/make-pawn "P" [0 0])
+          w    (entity/add-entity {:entities {}} pawn)]
+      (is (contains? (get-in w [:kinds :pawn]) (:id pawn))))))
+
+(deftest kind-queries-return-ascending-by-id
+  (testing "pawns iterate ascending by id regardless of insertion order"
+    (let [lo  (entity/make-pawn "lo" [0 0])    ; constructed first -> lower id
+          hi  (entity/make-pawn "hi" [1 1])    ; -> higher id
+          w   (-> {:entities {} :kinds (entity/empty-kinds)}
+                  (entity/add-entity hi)        ; insert the higher id FIRST
+                  (entity/add-entity lo))
+          ids (map :id (entity/pawns w))]
+      (is (= [(:id lo) (:id hi)] ids) "lowest id first, even though added last"))))
+
+(deftest reindex-kinds-rebuilds-equals-incremental-and-idempotent
+  (testing "reindex-kinds rebuilds :kinds from :entities, == incremental, idempotent"
+    (let [incremental (-> {:entities {} :kinds (entity/empty-kinds)}
+                          (entity/add-entity (entity/make-pawn "P" [0 0]))
+                          (entity/add-entity (entity/make-item :wood [1 1]))
+                          (entity/add-entity (entity/make-tree [2 2])))
+          rebuilt     (entity/reindex-kinds (dissoc incremental :kinds))]
+      (is (= (:kinds incremental) (:kinds rebuilt)) "rebuild reproduces the incremental index")
+      (is (= (:kinds rebuilt) (:kinds (entity/reindex-kinds rebuilt))) "idempotent"))))
+
+(deftest kind-queries-read-only-the-index
+  (testing "an entity in :entities but absent from :kinds is invisible until reindex"
+    (let [pawn (entity/make-pawn "ghost" [0 0])
+          w    {:entities {(:id pawn) pawn} :kinds (entity/empty-kinds)}]
+      (is (empty? (entity/pawns w)) "the index is authoritative for kind queries")
+      (is (= [(:id pawn)] (map :id (entity/pawns (entity/reindex-kinds w))))
+          "reindex-kinds repairs the index"))))

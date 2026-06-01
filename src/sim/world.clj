@@ -23,6 +23,7 @@
       :grid      {...}      ; tiles + width/height (see sim.tile)
       :entities  {id ent}   ; entities by id
       :schedule  {...}      ; derived tick-band bucket index (see sim.schedule)
+      :kinds     {...}      ; derived per-kind id index (see sim.entity)
       :zones     []         ; stockpile zones (see sim.zone)
       :events    []         ; pending events (consumed by sim each tick)
       :rng-seed  12345}"
@@ -32,6 +33,7 @@
      :grid         grid
      :entities     {}
      :schedule     (schedule/empty-index)
+     :kinds        (entity/empty-kinds)
      :zones        []          ; stockpile zones (see sim.zone); plain saved state
      :next-zone-id 1           ; monotonic zone-id counter
      :events       []

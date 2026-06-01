@@ -7,9 +7,14 @@
    need 10k+ entities we'll move to column-store, but the public API in this
    namespace is what callers depend on, so it stays stable.
 
+   Two DERIVED indexes ride alongside `(:entities world)`, both rebuilt on load
+   and stripped on save (the map of entities is the only source of truth):
    `:ticker-type` (:never/:rare/:long) places an entity in the scheduler's
-   rare/long bucket index. add-entity/remove-entity are the lifecycle
-   chokepoint that keeps that index in sync — see sim.schedule."
+   rare/long bucket index (see sim.schedule); `:kind` (:pawn/:item/:tree) places
+   it in the `:kinds` index — a per-kind sorted set of ids that pawns/items/trees
+   read, turning their O(all-entities) filter into an O(of-that-kind) lookup.
+   add-entity/remove-entity are the lifecycle chokepoint that keeps BOTH in sync;
+   reindex/`reindex-kinds` rebuild them."
   (:require
    [sim.defs     :as defs]
    [sim.schedule :as schedule]))
@@ -97,20 +102,26 @@
   [world]
   (vals (:entities world)))
 
+;; pawns/items/trees read the derived :kinds index, NOT (vals :entities): an
+;; O(of-that-kind) lookup, ascending by id (the index is a sorted-set per kind).
+;; `keep` (not `map`) defensively skips an id missing from :entities, mirroring
+;; sim.schedule/due-entities. The ascending order makes per-kind iteration
+;; deterministic without a per-call sort.
+
 (defn pawns
-  "Sequence of all pawn entities."
+  "Sequence of all pawn entities, ascending by id."
   [world]
-  (filter #(= :pawn (:kind %)) (all-entities world)))
+  (keep #(entity world %) (get-in world [:kinds :pawn])))
 
 (defn items
-  "Sequence of all item entities."
+  "Sequence of all item entities, ascending by id."
   [world]
-  (filter #(= :item (:kind %)) (all-entities world)))
+  (keep #(entity world %) (get-in world [:kinds :item])))
 
 (defn trees
-  "Sequence of all tree entities."
+  "Sequence of all tree entities, ascending by id."
   [world]
-  (filter #(= :tree (:kind %)) (all-entities world)))
+  (keep #(entity world %) (get-in world [:kinds :tree])))
 
 (defn items-at
   "Sequence of all items currently at [x y]."
@@ -127,23 +138,62 @@
        first))
 
 ;; ---------------------------------------------------------------------------
+;; Kind index — DERIVED state mirroring :schedule: a per-kind sorted set of ids,
+;; maintained at the add-entity/remove-entity chokepoint, rebuilt from :entities
+;; by reindex-kinds on load (sim.save strips it before freezing). Sorted sets
+;; (not hash sets) make pawns/items/trees iterate ascending by id.
+;; ---------------------------------------------------------------------------
+
+(def ^:private known-kinds [:pawn :item :tree])
+
+(defn empty-kinds
+  "Fresh :kinds value: an empty sorted-set per known kind. add-entity fnil-creates
+   any kind absent here, so a future kind indexes itself without editing this."
+  []
+  (zipmap known-kinds (repeat (sorted-set))))
+
+(defn- index-kind
+  "Add an entity's id to its kind's set, creating the set if absent."
+  [world entity]
+  (update-in world [:kinds (:kind entity)] (fnil conj (sorted-set)) (:id entity)))
+
+(defn- unindex-kind
+  "Remove an entity's id from its kind's set. No-op on a world without :kinds."
+  [world entity]
+  (if (get-in world [:kinds (:kind entity)])
+    (update-in world [:kinds (:kind entity)] disj (:id entity))
+    world))
+
+(defn reindex-kinds
+  "Rebuild :kinds from scratch from (:entities world). Idempotent. Used on load
+   and as a repair when the index might be stale or absent."
+  [world]
+  (reduce index-kind
+          (assoc world :kinds (empty-kinds))
+          (vals (:entities world))))
+
+;; ---------------------------------------------------------------------------
 ;; Updates — return modified world maps
 ;; ---------------------------------------------------------------------------
 
 (defn add-entity
-  "Insert an entity and register it in the schedule index (the lifecycle
-   chokepoint). On a world without :schedule, register is a no-op."
+  "Insert an entity and register it in the derived indexes (the lifecycle
+   chokepoint): the :kinds set for its kind and the schedule bucket for its
+   ticker-type. index-kind fnil-creates a missing :kinds; schedule/register is a
+   no-op on a world without :schedule."
   [world entity]
   (-> world
       (assoc-in [:entities (:id entity)] entity)
+      (index-kind entity)
       (schedule/register entity)))
 
 (defn remove-entity
-  "Remove an entity and unregister it from the schedule index."
+  "Remove an entity and unregister it from both derived indexes."
   [world id]
   (if-let [e (get-in world [:entities id])]
     (-> world
         (update :entities dissoc id)
+        (unindex-kind e)
         (schedule/unregister e))
     world))
 
