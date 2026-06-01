@@ -28,6 +28,24 @@
        (filter #(= [tx ty] (:pos %)))
        first))
 
+(defn building-at
+  "First building entity on tile [tx ty], or nil."
+  [w tx ty]
+  (->> (entity/buildings w)
+       (filter #(= [tx ty] (:pos %)))
+       first))
+
+(defn can-build-wall?
+  "True if a wall may be placed at [x y]: in-bounds, terrain passable, no pawn
+   on the cell, and no existing building there. Pure — shared by the build
+   cursor indicator and build-wall!."
+  [world [x y]]
+  (let [grid (:grid world)]
+    (and (in-bounds? grid x y)
+         (tile/passable? (tile/tile-at grid x y))
+         (nil? (pawn-at world x y))
+         (nil? (building-at world x y)))))
+
 (defn left-click!
   "RimWorld left-click: cycle the selection through the selectable entities on
    the clicked tile. Repeated clicks on one tile advance and wrap; a tile whose
@@ -75,4 +93,26 @@
    shift-drag twin of commit-stockpile!. Zones left empty are dropped."
   [start current]
   (swap! world/world zone/remove-cells start current)
+  nil)
+
+(defn build-wall!
+  "Place one wall building at tile [tx ty], if can-build-wall?. The world-side
+   of build mode; sim.input handles the click and cursor."
+  [tx ty]
+  (swap! world/world
+         (fn [w]
+           (if (can-build-wall? w [tx ty])
+             (entity/add-entity w (entity/make-building [tx ty]))
+             w)))
+  nil)
+
+(defn deconstruct-wall!
+  "Remove the wall building at tile [tx ty], if any. Terrain is untouched (it
+   was never overwritten), so the cell simply becomes passable again."
+  [tx ty]
+  (swap! world/world
+         (fn [w]
+           (if-let [b (building-at w tx ty)]
+             (entity/remove-entity w (:id b))
+             w)))
   nil)
