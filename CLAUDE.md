@@ -415,9 +415,11 @@ old compiled loop body until `start!` respawns it.
   Stage 2 upgraded the flat labeling to a CHUNKED region graph (12×12 chunks,
   cross-chunk adjacency, a union-find component layer) with INCREMENTAL rebuild via
   PathGrid cost-diff (re-flood only the dirty chunks), behind the unchanged
-  `reachable?`/`region-at` interface. STILL deferred: hierarchical pathing (HPA*)
-  for big maps, a faster `build-graph` (currently O(cells) with persistent-map edge
-  churn), and rooms (Stage 3: enclosure detection over the region graph). This is
+  `reachable?`/`region-at` interface. `build-graph` was then optimized (HashMap
+  edge accumulator + allocation-free inlined corner rule) so the incremental
+  rebuild is ~3ms on 200×200 (was ~10ms). STILL deferred: hierarchical pathing
+  (HPA*) for big maps, a fully incremental `build-graph` (border-scoped relink so
+  it is O(dirty) not O(cells)), and rooms (Stage 3: enclosure detection). This is
   RimWorld's model (regions + reachability cache + dirty-on-build + per-step path
   validation).
 - **GLFW restart-in-same-JVM is now moot.** The unified main-thread model
@@ -473,7 +475,7 @@ old compiled loop body until `start!` respawns it.
   component count); `of-grid` is a terrain-only convenience. Cache CANNOT go stale
   (a new PathGrid identity → rebuild; the diff is exhaustive), so no false
   negatives. Depends on `sim.pathgrid` + `sim.tile`; NOT in the world, NOT saved.
-  Deferred: a faster `build-graph` (HashMap accumulator) and HPA*.
+  Deferred: border-incremental relink (an O(dirty) `build-graph`) and HPA*.
 - `src/sim/pathgrid.clj`: derived per-cell traversal-cost `double-array`
   (`build`/`for-world`/`cost`/`passable?`): terrain move-cost with INFINITY at
   blocking buildings. A MEMOIZED PROJECTION keyed on `[grid, (:kinds :building)]`

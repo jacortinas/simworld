@@ -182,43 +182,70 @@
           (flood-chunk! arr costs width height x0 y0 x1 y1 base))))
     arr))
 
+;; Forward neighbor offsets (right, down, down-right, down-left): the 4 directions
+;; that visit each undirected 8-adjacency edge exactly once in a row-major scan.
+;; Parallel int-arrays so pass 2 allocates no per-cell neighbor vectors.
+(def ^:private ^"[I" fwd-dx (int-array [1 0  1 -1]))
+(def ^:private ^"[I" fwd-dy (int-array [0 1  1  1]))
+
 (defn- build-graph
   "From `cell->region` + `costs`, build {rid {:chunk [cx cy] :neighbors #{rid...}}}.
    Pass 1 seeds every region node (with its chunk, empty neighbor set). Pass 2
    adds an edge between adjacent cells in DIFFERENT regions when the step is legal
    (corner rule). All such edges are cross-chunk by construction (intra-chunk
-   connected cells already share one region)."
+   connected cells already share one region).
+
+   Edges accumulate in a mutable java.util.HashMap of HashSets (the cold rebuild
+   touches up to thousands of nodes), frozen to a persistent map of persistent sets
+   at the end. This avoids the per-edge persistent-map path-copying that previously
+   dominated the incremental rebuild. Region ids are coerced to `long` before they
+   enter the HashMap, so keys/values are uniformly Long (a raw HashMap uses Java
+   .equals, where Integer != Long), matching region-at's ^long return."
   [^ints cell->region ^doubles costs ^long width ^long height]
-  (let [nxc (n-chunks width)
-        n   (* width height)
-        base (persistent!
-              (reduce (fn [m i]
-                        (let [r (aget cell->region (int i))]
-                          (if (or (neg? r) (contains? m r))
-                            m
-                            (assoc! m r {:chunk (rid->chunk r nxc) :neighbors #{}}))))
-                      (transient {})
-                      (range n)))
-        add-edge (fn [m a b]
-                   (-> m
-                       (update-in [a :neighbors] conj b)
-                       (update-in [b :neighbors] conj a)))]
-    (loop [i 0 m base]
-      (if (< i n)
-        (let [a (aget cell->region (int i))]
-          (if (neg? a)
-            (recur (inc i) m)
-            (let [x (rem i width) y (quot i width)
-                  m (reduce
-                     (fn [m [nx ny]]
-                       (if (legal-step? costs width height x y nx ny)
-                         (let [b (aget cell->region (tile/idx width nx ny))]
-                           (if (and (>= b 0) (not= a b)) (add-edge m a b) m))
-                         m))
-                     m
-                     [[(inc x) y] [x (inc y)] [(inc x) (inc y)] [(dec x) (inc y)]])]
-              (recur (inc i) m))))
-        m))))
+  (let [nxc  (n-chunks width)
+        n    (* width height)
+        ^java.util.HashMap nbrs (java.util.HashMap.)]   ; rid (long) -> HashSet of rid
+    ;; pass 1: seed every region node with an empty neighbor set
+    (loop [i 0]
+      (when (< i n)
+        (let [r (long (aget cell->region (int i)))]
+          (when (and (>= r 0) (not (.containsKey nbrs r)))
+            (.put nbrs r (java.util.HashSet.))))
+        (recur (inc i))))
+    ;; pass 2: add cross-region edges via the 4 forward neighbors, inlining the
+    ;; corner rule on primitives (no per-cell vector allocation, no boxing of the
+    ;; args a legal-step? call would incur). This MUST stay identical to
+    ;; legal-step? / pathfinding's rule; the oracle tests guard the equivalence.
+    ;; ny is always in-bounds below (dy >= 0, y >= 0), and a diagonal's flanks are
+    ;; in-bounds whenever its target is, so only nx/ny target bounds are checked.
+    (loop [i 0]
+      (when (< i n)
+        (let [a (long (aget cell->region (int i)))]
+          (when (>= a 0)
+            (let [x (rem i width) y (quot i width)]
+              (dotimes [k 4]
+                (let [dx (aget fwd-dx k)
+                      dy (aget fwd-dy k)
+                      nx (+ x dx)
+                      ny (+ y dy)]
+                  (when (and (>= nx 0) (< nx width) (< ny height)
+                             (< (aget costs (tile/idx width nx ny)) Double/POSITIVE_INFINITY)
+                             (or (zero? dx) (zero? dy)
+                                 (and (< (aget costs (tile/idx width nx y)) Double/POSITIVE_INFINITY)
+                                      (< (aget costs (tile/idx width x ny)) Double/POSITIVE_INFINITY))))
+                    (let [b (long (aget cell->region (tile/idx width nx ny)))]
+                      (when (and (>= b 0) (not= a b))
+                        (.add ^java.util.HashSet (.get nbrs a) b)
+                        (.add ^java.util.HashSet (.get nbrs b) a)))))))))
+        (recur (inc i))))
+    ;; freeze to a persistent {rid {:chunk :neighbors}} map
+    (persistent!
+     (reduce (fn [m ^java.util.Map$Entry e]
+               (assoc! m (.getKey e)
+                       {:chunk (rid->chunk (.getKey e) nxc)
+                        :neighbors (into #{} (.getValue e))}))
+             (transient {})
+             (.entrySet nbrs)))))
 
 (defn- build-components
   "region->component map via union-find over the region graph. Component ids are
