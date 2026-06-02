@@ -70,7 +70,7 @@ reload live; edits to the clock loop body itself need `(restart!)`.
 
 - **Core sim.** Linearized tile grid; pawns with needs and skills; 8-directional
   A* pathfinding (octile heuristic, diagonal x sqrt(2) cost, strict corner rule)
-  backed by primitive arrays and a `java.util.PriorityQueue`; a connected-component
+  backed by primitive arrays and a `java.util.PriorityQueue`; a chunked region-graph
   **reachability cache** that rejects doomed paths in O(1). Pawns glide smoothly
   between cells (a render-only interpolation; the sim stays integer-tick).
 - **Jobs as data.** `:go-to`, `:haul` (a 4-phase pickup/deliver FSM), and `:eat`,
@@ -138,7 +138,7 @@ sim/
     defs.clj                   the immutable content registry (the Def DB)
     pathfinding.clj            8-directional array-backed A*
     pathgrid.clj               derived per-cell cost grid (terrain + building blockers)
-    regions.clj                connected-component reachability cache
+    regions.clj                chunked region graph + reachability cache
     job.clj                    job multimethod, haul/eat/go-to, movement core
     think.clj                  the data think-tree (idle behavior selection)
     ai.clj                     job execution + redeliberation
@@ -162,8 +162,8 @@ sim/
 
 ## Not yet built
 
-- **Rooms** (enclosure detection over the region graph) and the chunked, incremental
-  region rebuild that makes large maps cheap.
+- **Rooms** (enclosure detection over the region graph; the chunked, incremental
+  region graph they build on now exists).
 - **Construction** as labor: blueprints, frames, material hauling, a `:build` job.
   Walls are placed instantly for now.
 - **Doors** (passable-but-special region edges), temperature, a work-priority matrix.

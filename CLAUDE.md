@@ -114,7 +114,7 @@ namespaces (the directory rename happened early, never use `colony.*`).
   exits. Zones are saved world state (`sim.zone`, `:zones`); the live drag
   rectangle is view state. The drag-rectangle core is reusable for future
   building placement. Pawns don't USE stockpiles yet (that's the haul leaf).
-- **Buildings + reachability (the spatial spine, Stage 1).** Walls are `:building`
+- **Buildings + reachability (the spatial spine, Stages 1-2).** Walls are `:building`
   entities (a `:thing` def with `:kind :building`, `:blocks-path? true`), placed
   one at a time in `B` build mode (a hover cursor shows validity; shift-click
   deconstructs; `Esc`/right-click exits). A derived, memoized PathGrid
@@ -123,8 +123,8 @@ namespaces (the directory rename happened early, never use `colony.*`).
   READ, so a wall built at runtime reroutes pawns and can wall off a goal (O(1)
   `reachable?` rejection). Pawns mid-walk replan via step-validation (`walk-toward`
   nils `:path` when the next cell is now blocked). `F1`/`F2` toggle transparent
-  region / pathgrid debug overlays. Roadmap: chunked incremental regions
-  (Stage 2), then rooms (Stage 3).
+  region / pathgrid debug overlays. Stage 2 (a chunked incremental region
+  graph with O(1) component reachability) is now in; next is rooms (Stage 3).
 
 ## Load-bearing architectural decisions
 
@@ -408,15 +408,18 @@ old compiled loop body until `start!` respawns it.
   `find-path` and `sim.regions` both read. Do NOT add recompute-every-
   tick (A* is now the array-backed `java.util.PriorityQueue` implementation in
   `sim.pathfinding`, fast, ~2-12× the old map-based scan, but a full replan
-  every tick is still wasteful). **Stage 1 of the reachability work is DONE:**
+  every tick is still wasteful). **Stages 1-2 of the reachability work are DONE:**
   `sim.regions` labels passable cells into connected components and `find-path`
   short-circuits to nil in O(1) when start/goal are passable but in different
-  components, no more full-map explore to conclude "unreachable" (~15,700× on the
-  120×120 split-grid worst case: 1.69ms → 108ns warm). STILL deferred (Stage 2):
-  a region GRAPH + hierarchical pathing (HPA*) for coarse routing on big maps, and
-  dirty-on-build incremental region rebuild for when runtime wall/door building
-  lands. This is RimWorld's model (regions + reachability cache + dirty-on-build +
-  per-step path validation).
+  components (~15,700× on the 120×120 split-grid worst case: 1.69ms → 108ns warm).
+  Stage 2 upgraded the flat labeling to a CHUNKED region graph (12×12 chunks,
+  cross-chunk adjacency, a union-find component layer) with INCREMENTAL rebuild via
+  PathGrid cost-diff (re-flood only the dirty chunks), behind the unchanged
+  `reachable?`/`region-at` interface. STILL deferred: hierarchical pathing (HPA*)
+  for big maps, a faster `build-graph` (currently O(cells) with persistent-map edge
+  churn), and rooms (Stage 3: enclosure detection over the region graph). This is
+  RimWorld's model (regions + reachability cache + dirty-on-build + per-step path
+  validation).
 - **GLFW restart-in-same-JVM is now moot.** The unified main-thread model
   removed the window spawn / `(go!)`-reopens-window path, so the old "can we
   restart libGDX in one REPL session?" question no longer applies,
@@ -459,14 +462,18 @@ old compiled loop body until `start!` respawns it.
   (enforced by `defs ::move-cost`). Reads the shared `sim.pathgrid` cost array
   (terrain + building blockers, no per-search snapshot) and short-circuits to nil
   via `sim.regions` before A* when start/goal are in different connected components.
-- `src/sim/regions.clj`: PURE connected-component labeling (RimWorld's
-  reachability cache): `of-pathgrid` (union-find over the SAME 8-dir +
-  corner-rule adjacency A* uses, reading passability from a `sim.pathgrid` cost
-  array, memoized by PathGrid IDENTITY in a size-1 `defonce` atom), `reachable?`
-  (takes a world), `region-at`/`count-regions`; `of-grid` is a terrain-only
-  convenience. Cache CANNOT go stale (a new PathGrid identity → rebuild), so no
-  false negatives. Depends on `sim.pathgrid` + `sim.tile`; NOT in the world, NOT
-  saved. Stage 2 (chunked regions / region graph / HPA*) deferred.
+- `src/sim/regions.clj`: PURE CHUNKED region graph (RimWorld's reachability
+  cache): `of-pathgrid` floods 12×12 chunks into per-chunk-canonical region NODES,
+  links cross-chunk adjacency (the SAME 8-dir + corner-rule A* uses, read from a
+  `sim.pathgrid` cost array), and union-finds the nodes into COMPONENTS so
+  `reachable?` is an O(1) component compare. Memoized by PathGrid IDENTITY in a
+  size-1 `defonce` atom; a miss re-floods only the chunks whose costs changed
+  (diff vs the cached cost array), then rebuilds the graph + components.
+  `reachable?` (takes a world), `region-at`/`count-regions` (NODE count, not
+  component count); `of-grid` is a terrain-only convenience. Cache CANNOT go stale
+  (a new PathGrid identity → rebuild; the diff is exhaustive), so no false
+  negatives. Depends on `sim.pathgrid` + `sim.tile`; NOT in the world, NOT saved.
+  Deferred: a faster `build-graph` (HashMap accumulator) and HPA*.
 - `src/sim/pathgrid.clj`: derived per-cell traversal-cost `double-array`
   (`build`/`for-world`/`cost`/`passable?`): terrain move-cost with INFINITY at
   blocking buildings. A MEMOIZED PROJECTION keyed on `[grid, (:kinds :building)]`
