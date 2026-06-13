@@ -1,0 +1,11 @@
+;; clj-kondo configuration for sim.
+;;
+;; Project-wide static-analysis settings. Run with `clj-kondo --lint src test dev`
+;; (see docs/dev-environment.md). The .cache/ dir clj-kondo writes alongside
+;; this file is gitignored; this config is tracked so every machine and every
+;; web session lints identically.
+{:config-in-ns
+ {;; The REPL helper namespace deliberately `require`s the whole system so
+  ;; everything is reachable at the prompt; those requires are not "unused".
+  user {:linters {:unused-namespace    {:level :off}
+                  :unused-referred-var {:level :off}}}}}
