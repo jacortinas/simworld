@@ -116,6 +116,13 @@
                (and (< (aget costs (tile/idx width nx y)) Double/POSITIVE_INFINITY)
                     (< (aget costs (tile/idx width x ny)) Double/POSITIVE_INFINITY)))))))
 
+;; 8-neighbor offsets as parallel int-arrays, so the flood pops a cell and visits
+;; its neighbors with NO per-cell vector-of-vectors allocation: the same zero-alloc
+;; idiom build-graph (fwd-dx/fwd-dy) and pathfinding (n-dx/n-dy) already use. Flood
+;; order is irrelevant (every reachable neighbor is enqueued regardless).
+(def ^:private ^"[I" flood-dx (int-array [-1  0  1 -1 1 -1 0 1]))
+(def ^:private ^"[I" flood-dy (int-array [-1 -1 -1  0 0  1 1 1]))
+
 (defn- flood-chunk!
   "Reset chunk [x0..x1]x[y0..y1] from `costs` (blocked -> -1), then flood its
    passable cells into region ids (base + local scan-order index), 8-connected
@@ -154,14 +161,15 @@
                           (while (not (.isEmpty stack))
                             (let [ci (int (.pop stack))
                                   cx (rem ci width) cy (quot ci width)]
-                              (doseq [[dx dy] [[-1 -1] [0 -1] [1 -1] [-1 0]
-                                               [1 0] [-1 1] [0 1] [1 1]]]
-                                (let [nx (+ cx dx) ny (+ cy dy)]
-                                  (when (and (>= nx x0) (<= nx x1) (>= ny y0) (<= ny y1)
-                                             (== (aget cell->region (tile/idx width nx ny)) -2)
-                                             (legal-step? costs width height cx cy nx ny))
-                                    (aset cell->region (tile/idx width nx ny) (int rid))
-                                    (.push stack (int (tile/idx width nx ny))))))))
+                              (dotimes [k 8]
+                                (let [nx (+ cx (aget flood-dx k))
+                                      ny (+ cy (aget flood-dy k))]
+                                  (when (and (>= nx x0) (<= nx x1) (>= ny y0) (<= ny y1))
+                                    (let [ni (tile/idx width nx ny)]
+                                      (when (and (== (aget cell->region ni) -2)
+                                                 (legal-step? costs width height cx cy nx ny))
+                                        (aset cell->region ni (int rid))
+                                        (.push stack (int ni)))))))))
                           (recur (inc x) (inc local)))
                         (recur (inc x) local)))
                     local))]

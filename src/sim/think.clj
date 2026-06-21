@@ -47,11 +47,12 @@
    distance (ties broken by id for determinism) and mint an :eat job. Pathing is
    deferred to job execution, so this stays cheap (no per-candidate A*)."
   [world pawn]
-  (let [pos   (:pos pawn)
-        foods (->> (entity/items world)
-                   (filter #(and (= :food (:material %))
-                                 (:pos %)
-                                 (reservation/can-reserve? world (:id %) (:id pawn)))))]
+  (let [pos    (:pos pawn)
+        claims (reservation/claims world)
+        foods  (->> (entity/items world)
+                    (filter #(and (= :food (:material %))
+                                  (:pos %)
+                                  (reservation/reservable? claims (:id %) (:id pawn)))))]
     (when (seq foods)
       (let [target (first (sort-by (juxt #(manhattan pos (:pos %)) :id) foods))]
         (job/eat (:id target))))))
@@ -95,10 +96,11 @@
   (let [pos   (:pos pawn)
         cells (zone/stockpile-cells world)]
     (when (seq cells)
-      (let [loose (->> (entity/items world)
-                       (filter #(and (:pos %)
-                                     (not (contains? cells (:pos %)))
-                                     (reservation/can-reserve? world (:id %) (:id pawn)))))]
+      (let [claims (reservation/claims world)
+            loose  (->> (entity/items world)
+                        (filter #(and (:pos %)
+                                      (not (contains? cells (:pos %)))
+                                      (reservation/reservable? claims (:id %) (:id pawn)))))]
         (when (seq loose)
           (let [item (first (sort-by (juxt #(manhattan pos (:pos %)) :id) loose))
                 dest (first (sort-by (juxt #(manhattan (:pos item) %) identity) cells))]

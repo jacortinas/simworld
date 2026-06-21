@@ -101,7 +101,7 @@
             ;; peek of a suffix is still the true goal tile.
             (when (seq ahead)
               (let [[cx cy] (tile-center (peek ahead) tile-size height)
-                    s       (* (double tile-size) (double goal-size))
+                    s       (* (double tile-size) goal-size)
                     half    (/ s 2.0)]
                 (.setColor batch goal-color)
                 (.draw batch pixel

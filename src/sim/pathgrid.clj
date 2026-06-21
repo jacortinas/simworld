@@ -30,7 +30,7 @@
     (dotimes [i n]
       (let [t (nth tiles i)]
         (aset costs i (if (tile/passable? t)
-                        (double (tile/move-cost t))
+                        (tile/move-cost t)            ; already ^double
                         Double/POSITIVE_INFINITY))))
     (doseq [b buildings]
       (when (:blocks-path? b)

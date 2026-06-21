@@ -12,6 +12,7 @@
    as a world command); only the button rect actually toggles pause."
   (:require
    [sim.clock    :as clock]
+   [sim.entity   :as entity]
    [sim.screens  :as screens]
    [sim.ui-state :as ui])
   (:import
@@ -61,14 +62,16 @@
       (>= sy (- h bar-h))   true            ; elsewhere on the bar: eat, no action
       :else                 false)))        ; world click — let it through
 
-(defn- ^String status-text [world]
+(defn- status-text ^String [world]
   (str (cond (not (clock/running?*)) "STOPPED"
              (clock/paused?*)        "PAUSED"
              :else                   "RUNNING")
        "    tick "  (:clock world 0)
-       "    pawns " (count (filter #(= :pawn (:kind %)) (vals (:entities world))))
-       "    items " (count (filter #(and (= :item (:kind %)) (:pos %))
-                                   (vals (:entities world))))
+       ;; Counts read the derived :kinds index instead of an O(all-entities) scan
+       ;; per frame: pawn count is an O(1) sorted-set count; grounded items iterate
+       ;; only the item kind (the :pos filter excludes carried items).
+       "    pawns " (count (get-in world [:kinds :pawn]))
+       "    items " (count (filter :pos (entity/items world)))
        "    log "   (count (:log world))
        "    sel "   (or (ui/selected) "-")
        "    zoom "  (format "%.2f" (double (:zoom (ui/camera))))))

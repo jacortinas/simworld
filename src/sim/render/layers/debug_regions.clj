@@ -5,7 +5,6 @@
   (:require
    [sim.pathgrid :as pathgrid]
    [sim.regions  :as regions]
-   [sim.tile     :as tile]
    [sim.ui-state :as ui])
   (:import
    (com.badlogic.gdx.graphics Color Texture)

@@ -187,7 +187,7 @@
   (let [pid  (:id pawn)
         from (:pos pawn)
         to   ((get-in pawn [:job :path]) next-i)
-        cost (segment-cost (:grid world) (:move-ticks pawn 15) from to)]
+        cost (segment-cost (:grid world) (:move-ticks pawn) from to)]
     (entity/update-entity world pid
                           (fn [p]
                             (-> p
@@ -256,6 +256,19 @@
       :else
       (step-or-replan world pawn (inc (:path-index job))))))
 
+(defn- mark-in-progress
+  "Flip the pawn's job to :state :in-progress, but ONLY when it isn't already.
+   A walking pawn calls advance every tick; re-stamping an unchanged :state would
+   path-copy the :entities map for a no-op write, the single most frequent
+   per-tick allocation at scale. The :haul :go-to-dest phase already returned
+   world' without re-stamping; this generalizes that to the :go-to / :eat /
+   :haul-:go-to-item walk branches so a steady-state glide writes the pawn once
+   per tick (the :move :elapsed bump), not twice."
+  [world pawn]
+  (if (= :in-progress (get-in pawn [:job :state]))
+    world
+    (set-job world (:id pawn) assoc :state :in-progress)))
+
 ;; ---------------------------------------------------------------------------
 ;; advance: the public dispatch. (world, pawn) -> world.
 ;; ---------------------------------------------------------------------------
@@ -278,7 +291,7 @@
         (case result
           :arrived (mark-state world' (:id pawn) :complete)
           :failed  (mark-state world' (:id pawn) :failed)
-          :walking (set-job world' (:id pawn) assoc :state :in-progress))))))
+          :walking (mark-in-progress world' pawn))))))
 
 (defmethod advance :haul
   [world pawn]
@@ -303,7 +316,7 @@
             (case result
               :arrived (next-phase world' pid :pickup)
               :failed  (mark-state world' pid :failed)
-              :walking (set-job world' pid assoc :state :in-progress))))
+              :walking (mark-in-progress world' pawn))))
 
         :pickup
         ;; Reservation guard: if another pawn holds the claim (the same-tick
@@ -368,7 +381,7 @@
           (case result
             :arrived (next-phase world' pid :consume)
             :failed  (mark-state world' pid :failed)
-            :walking (set-job world' pid assoc :state :in-progress)))
+            :walking (mark-in-progress world' pawn)))
 
         :consume
         (-> world

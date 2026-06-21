@@ -158,6 +158,23 @@
       (is (= 15 (:cost mv))        "cardinal grass costs move-ticks to cross")
       (is (not (job/complete? (:job pawn))) "still gliding, not yet arrived"))))
 
+(deftest walking-marks-in-progress-once-and-keeps-it
+  (testing "the first advance marks a go-to :in-progress; later glide ticks keep it
+            there (mark-in-progress skips the redundant per-tick state write and
+            must NOT revert the state)"
+    (let [[w0 pid _] (setup [0 0] [0 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/go-to [3 0]))
+          a1   (drive-n w1 pid 1)
+          a5   (drive-n w1 pid 5)]
+      (is (= :pending (get-in (entity/entity w1 pid) [:job :state]))
+          "a freshly assigned go-to starts :pending")
+      (is (= :in-progress (get-in (entity/entity a1 pid) [:job :state]))
+          "the first advance marks the job :in-progress")
+      (is (= :in-progress (get-in (entity/entity a5 pid) [:job :state]))
+          "still :in-progress several glide ticks later (guard is a no-op, not a revert)")
+      (is (not (job/complete? (:job (entity/entity a5 pid))))
+          "a 3-cell walk is nowhere near done at tick 5"))))
+
 (deftest diagonal-move-costs-more-ticks
   (testing "a diagonal segment records the √2-scaled cost"
     (let [[w0 pid _] (setup [0 0] [0 0])

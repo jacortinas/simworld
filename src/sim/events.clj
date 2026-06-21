@@ -27,10 +27,16 @@
   (update world :events (fnil into []) events))
 
 (defn drain
-  "Return [events-vec world-with-empty-queue]. The two parts are usually
-   consumed together — events flow through the tick pipeline."
+  "Return [events-vec world']. The two parts are usually consumed together as
+   events flow through the tick pipeline. When the queue is empty (the common
+   case while no system enqueues), `world` is returned UNCHANGED, so an idle
+   event pipeline costs zero per-tick allocation rather than re-assoc'ing a fresh
+   empty vector every tick forever."
   [world]
-  [(:events world []) (assoc world :events [])])
+  (let [evs (:events world)]
+    (if (seq evs)
+      [evs (assoc world :events [])]
+      [[] world])))
 
 ;; ---------------------------------------------------------------------------
 ;; Default handler — multimethod so new event types are open for extension
