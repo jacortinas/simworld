@@ -14,7 +14,7 @@
 (defn advance-job
   "Job-execution step for one pawn — runs every tick. Clears a finished job;
    otherwise advances it one tick. There is NO speed gate here: move speed lives
-   in sim.job/segment-cost (ticks per cell), so the glide accumulates smoothly,
+   in sim.movement/segment-cost (ticks per cell), so the glide accumulates smoothly,
    one tick at a time. (The old 15-tick gate complected walk speed with the
    scheduler's deliberation cadence — two unrelated concerns.) Pure:
    (world, pawn) -> world."

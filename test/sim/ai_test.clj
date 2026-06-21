@@ -48,7 +48,7 @@
 
 ;; ---------------------------------------------------------------------------
 ;; advance-job runs the active job EVERY tick — no speed gate. Move speed lives
-;; in sim.job/segment-cost (ticks per cell), not in a deliberation-cadence gate,
+;; in sim.movement/segment-cost (ticks per cell), not in a deliberation-cadence gate,
 ;; so an in-flight glide accumulates one tick of progress per tick.
 ;; ---------------------------------------------------------------------------
 

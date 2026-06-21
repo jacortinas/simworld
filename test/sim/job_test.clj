@@ -7,9 +7,10 @@
    [clojure.test :refer [deftest is testing]]
    [sim.world  :as world]
    [sim.entity :as entity]
-   [sim.tile   :as tile]
-   [sim.log    :as log]
-   [sim.job    :as job]))
+   [sim.tile     :as tile]
+   [sim.log      :as log]
+   [sim.movement :as movement]
+   [sim.job      :as job]))
 
 (defn- setup
   "Build a 12x12 all-grass world with a hauler pawn and one :wood item.
@@ -130,19 +131,19 @@
 
 (deftest segment-cost-cardinal-is-move-ticks
   (let [g (tile/make-grid 12 12)]
-    (is (= 15 (job/segment-cost g 15 [0 0] [1 0])) "grass cardinal = move-ticks")))
+    (is (= 15 (movement/segment-cost g 15 [0 0] [1 0])) "grass cardinal = move-ticks")))
 
 (deftest segment-cost-diagonal-scales-by-root2
   (let [g (tile/make-grid 12 12)]
-    (is (= 21 (job/segment-cost g 15 [0 0] [1 1])) "round(15 × √2) = 21")))
+    (is (= 21 (movement/segment-cost g 15 [0 0] [1 1])) "round(15 × √2) = 21")))
 
 (deftest segment-cost-honors-terrain
   (let [g (tile/set-tile (tile/make-grid 12 12) 1 0 :water)] ; move-cost 2.5
-    (is (= 38 (job/segment-cost g 15 [0 0] [1 0])) "round(15 × 2.5) = 38")))
+    (is (= 38 (movement/segment-cost g 15 [0 0] [1 0])) "round(15 × 2.5) = 38")))
 
 (deftest segment-cost-never-zero
   (let [g (tile/make-grid 12 12)]
-    (is (= 1 (job/segment-cost g 0 [0 0] [1 0])) "clamps to a 1-tick minimum")))
+    (is (= 1 (movement/segment-cost g 0 [0 0] [1 0])) "clamps to a 1-tick minimum")))
 
 (deftest walking-flips-pos-and-records-a-segment
   (testing "starting a move sets :pos to the destination cell and records the
