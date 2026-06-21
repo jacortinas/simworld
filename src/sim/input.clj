@@ -28,6 +28,7 @@
    safe with no extra coordination."
   (:require
    [sim.command  :as command]
+   [sim.tools    :as tools]
    [sim.ui-state :as ui])
   (:import
    (com.badlogic.gdx Gdx InputAdapter Input$Buttons Input$Keys)
@@ -35,6 +36,13 @@
    (com.badlogic.gdx.math Vector3)))
 
 (set! *warn-on-reflection* true)
+
+(def ^:private tool-keys
+  "Keycode -> the ui-state :mode it enters. The one input-layer half of a tool
+   (libGDX keys live here, behavior lives in sim.tools); adding a tool's hotkey
+   is a one-line edit here, not a new keyDown branch."
+  {(int Input$Keys/Z) :zone-stockpile
+   (int Input$Keys/B) :build})
 
 (defn- shift-down?
   "Is either Shift key currently held? Polled from live libGDX input — used to
@@ -89,24 +97,25 @@
         false)
 
       (keyDown [keycode]
-        (condp = (int keycode)
-          ;; space → pause is INJECTED (on-toggle-pause) to keep this ns from
-          ;; importing sim.clock. The debug toggle is called DIRECTLY because
-          ;; we already depend on sim.ui-state (zoom/pan) -- no new coupling.
-          Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
-          Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
-          Input$Keys/Z      (do (ui/set-mode! :zone-stockpile) true) ; enter zoning
-          Input$Keys/B      (do (ui/set-mode! :build) true)          ; enter build mode
-          Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
-          Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay
-          ;; Escape is context-sensitive: cancel the active tool (zoning or build)
-          ;; first; only when no tool is active does it open the pause menu
-          ;; (RimWorld backs out of the current tool before the menu).
-          Input$Keys/ESCAPE (do (if (#{:zone-stockpile :build} (ui/mode))
-                                  (do (ui/set-mode! :select) (ui/clear-drag!))
-                                  (when on-open-pause-menu (on-open-pause-menu)))
-                                true)
-          false))
+        (let [kc (int keycode)]
+          (if-let [m (tool-keys kc)]
+            (do (ui/set-mode! m) true)              ; enter a placement tool (data-driven)
+            (condp = kc
+              ;; space → pause is INJECTED (on-toggle-pause) to keep this ns from
+              ;; importing sim.clock. The debug toggle is called DIRECTLY because
+              ;; we already depend on sim.ui-state (zoom/pan) -- no new coupling.
+              Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
+              Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
+              Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
+              Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay
+              ;; Escape is context-sensitive: back out of the active tool first;
+              ;; only with no tool active does it open the pause menu (RimWorld
+              ;; backs out of the current tool before the menu).
+              Input$Keys/ESCAPE (do (if (tools/tool (ui/mode))
+                                      (do (ui/set-mode! :select) (ui/clear-drag!))
+                                      (when on-open-pause-menu (on-open-pause-menu)))
+                                    true)
+              false))))
 
       (touchDown [screen-x screen-y _pointer button]
         (reset! drag {:button button :x screen-x :y screen-y})
@@ -118,25 +127,21 @@
             (let [height  (long (:height (:grid (world-fn))))
                   [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
               (condp = (int button)
-                ;; In zoning mode left starts a drag-rectangle and right cancels
-                ;; the mode; in build mode left places/deconstructs and right
-                ;; exits; otherwise the usual select / order commands.
+                ;; Left press: if a placement tool owns this mode, a drag tool
+                ;; begins a rectangle and a click tool fires immediately; with no
+                ;; tool active it is the default select command. Right press backs
+                ;; out of any active tool, else issues a move order.
                 Input$Buttons/LEFT
-                (cond
-                  (= (ui/mode) :zone-stockpile)
-                  ;; Shift held at drag-start makes this an ERASE drag; the flag
-                  ;; sticks for the whole drag (drives preview color + commit).
-                  (ui/set-drag! {:start [tx ty] :current [tx ty] :erase? (shift-down?)})
-
-                  (= (ui/mode) :build)
-                  (if (shift-down?)
-                    (command/deconstruct-wall! tx ty)
-                    (command/build-wall! tx ty))
-
-                  :else (command/left-click! tx ty))
+                (if-let [t (tools/tool (ui/mode))]
+                  (if (:drag? t)
+                    ;; Shift held at drag-start makes this an ERASE drag; the flag
+                    ;; sticks for the whole drag (drives preview color + commit).
+                    (ui/set-drag! {:start [tx ty] :current [tx ty] :erase? (shift-down?)})
+                    ((:on-click t) tx ty (shift-down?)))
+                  (command/left-click! tx ty))
 
                 Input$Buttons/RIGHT
-                (if (#{:zone-stockpile :build} (ui/mode))
+                (if (tools/tool (ui/mode))
                   (do (ui/set-mode! :select) (ui/clear-drag!))
                   (command/right-click! tx ty))
 
@@ -154,9 +159,10 @@
               ;; screen Y is down, world Y up → dy not negated.
               (ui/pan! (* (- dx) zoom) (* dy zoom)))
 
-            ;; Left-drag in zoning mode grows the preview rectangle to the
+            ;; Left-drag under a rectangle tool grows the preview rect to the
             ;; current tile (commit happens on touchUp).
-            (and (= (int button) Input$Buttons/LEFT) (= (ui/mode) :zone-stockpile))
+            (and (= (int button) Input$Buttons/LEFT)
+                 (some-> (tools/tool (ui/mode)) :drag?))
             (let [height  (long (:height (:grid (world-fn))))
                   [tx ty] (screen->tile (camera-fn) tile-size height screen-x screen-y)]
               (when-let [d (ui/drag)]
@@ -165,16 +171,15 @@
         true)
 
       (touchUp [_screen-x _screen-y _pointer _button]
-        (let [button (:button @drag)]
+        (let [button (:button @drag)
+              t      (tools/tool (ui/mode))]
           (reset! drag nil)
           (if (and button
                    (= (int button) Input$Buttons/LEFT)
-                   (= (ui/mode) :zone-stockpile)
+                   (:drag? t)
                    (ui/drag))
             (let [{:keys [start current erase?]} (ui/drag)]
-              (if erase?
-                (command/erase-stockpile!  start current)
-                (command/commit-stockpile! start current))
+              ((:on-commit t) start current erase?)
               (ui/clear-drag!)
               true)
             false))))))
