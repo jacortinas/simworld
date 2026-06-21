@@ -202,8 +202,10 @@ namespaces (the directory rename happened early, never use `colony.*`).
   both the pawn AND the item; returning a world makes that natural. Don't
   revert this, every job since haul depends on it.
 - **Movement is grid-faithful but glides (RimWorld's model).** Pawns always
-  *logically* occupy an integer cell; the smoothness is a render lie.
-  `walk-toward` is a sub-cell progress accumulator: a `:move {:from :to :elapsed
+  *logically* occupy an integer cell; the smoothness is a render lie. The
+  movement core lives in `sim.movement` (extracted from `sim.job`; the `advance`
+  defmethods call `movement/walk-toward`). `walk-toward` is a sub-cell progress
+  accumulator: a `:move {:from :to :elapsed
   :cost}` record in the job tracks the segment in flight, `:elapsed` climbs one
   tick per `advance`, and the cell completes when `:elapsed >= :cost`. Three
   load-bearing rules: (1) **`:pos` flips to the destination cell at move START**
@@ -224,7 +226,9 @@ namespaces (the directory rename happened early, never use `colony.*`).
   :source :player` on the job (the `job/forced-by-player` override). Auto-
   assignment later will check these.
 - **Placement mode (reusable drag-rectangle).** `sim.ui-state/:mode`
-  (`:select` default | `:zone-stockpile`) gates input: in zoning mode a left-DRAG
+  (`:select` default | `:zone-stockpile` | `:build`) gates input, dispatched
+  through the `sim.tools` registry (one tool spec per mode, see Files to know);
+  `sim.input` no longer hand-branches each mode. In zoning mode a left-DRAG
   paints a rectangle (`Z` enters, `Esc`/right-click cancels), and SHIFT+left-DRAG
   ERASES cells (`zone/remove-cells`, dropping emptied zones; preview turns red).
   The erase-ness is decided by whether Shift is held at drag-START and stored as
@@ -377,6 +381,24 @@ old compiled loop body until `start!` respawns it.
 
 `clj -M:run` is "run only" (no REPL). Closing the window exits the process.
 
+## Testing & tooling
+
+- **Run the suite:** `clojure -M:test` (the cognitect test-runner over `test/`).
+  It compiles every test ns, so it also catches compile errors in their requires.
+- **Headless compile-check a GL-dependent ns** (e.g. after editing `sim.input`,
+  which the suite may not load): `clojure -e "(require 'sim.input :reload)"`. This
+  compiles the libGDX-importing proxy WITHOUT opening a window; reflection
+  warnings print here too. `sim.input` itself has NO automated test (it's the GL
+  proxy edge), so smoke-test placement/select/order in the app after touching it.
+- **No `timeout` on macOS** (`zsh: command not found: timeout`). Just run the
+  command; don't prefix `timeout`.
+- **Em dashes: existing code is grandfathered, your edits are not.** Many existing
+  docstrings/comments contain U+2014; the `block-em-dash.sh` PreToolUse hook
+  rejects any NEW write that adds one. When you MOVE or edit that text (e.g.
+  extracting a fn with its docstring), strip the em dashes to ASCII first or the
+  Write/Edit is blocked.
+- **clj-kondo is not on PATH** here; verify lint findings by inspection.
+
 ## Open questions / not yet decided
 
 - **Items in `:entities` vs separate `:items` map.** Currently unified. UPDATE:
@@ -454,8 +476,15 @@ old compiled loop body until `start!` respawns it.
 - `src/sim/clock.clj`: the simulation clock (fixed-timestep tick driver);
   `start!`/`stop!` (liveness), `pause!`/`resume!`/`toggle-pause!` (sim-time)
 - `src/sim/job.clj`: defmulti `advance`, haul phases, `assign` (+ `prime-path`:
-  eager go-to pathing at assign time), and the movement core: `segment-cost`
-  (ticks to cross a cell) + `walk-toward` (the sub-cell progress accumulator)
+  eager go-to pathing at assign time), job constructors, state predicates, and the
+  FSM transitions (`mark-state`/`next-phase`/`mark-in-progress`). The gliding
+  movement core was extracted OUT to `sim.movement`; the `advance` defmethods call
+  `movement/walk-toward`. Keep job to FSM + assignment.
+- `src/sim/movement.clj`: the gliding movement core, shared by every walk-to-target
+  job: `segment-cost` (ticks to cross a cell), `walk-toward` (the sub-cell progress
+  accumulator) + `start-segment`/`step-or-replan`/`next-cell-passable?`, and
+  `set-job` (the shared pawn-job mutation helper job's FSM transitions also call,
+  hence it lives in this lower layer). Depends on entity/pathfinding/pathgrid.
 - `src/sim/pathfinding.clj`: 8-directional A*: `find-path` + `traversal-cost`
   (the unified terrain×√2-diagonal cost A* and movement share); octile heuristic,
   corner rule. Internals are primitive-array state (g/came-from/closed) + a
@@ -483,7 +512,11 @@ old compiled loop body until `start!` respawns it.
   by raw `get-in`, requires only `sim.tile`. Pathfinding + regions read it.
 - `src/sim/reservation.clj`: PURE derived reservation queries
   (`reserved-targets`, `claimant`, `can-reserve?`) over pawns' active jobs; no
-  stored state, release is automatic. Depends only on `sim.entity`.
+  stored state, release is automatic. Depends only on `sim.entity`. For a caller
+  checking MANY targets in one deliberation, build `claims` once (one O(pawns)
+  pass: target -> lowest-claimant) and filter with `reservable?`, instead of
+  `can-reserve?` per candidate (which re-scans all pawns); `think/give-haul` and
+  `give-eat` do this.
 - `src/sim/zone.clj`: PURE stockpile-zone model + rectangle geometry
   (`cells-in-rect`, `add-stockpile`, `stockpile-cells`, `cell-zoned?`). `:zones`
   is plain saved world state. The drag-rect core is reusable for future
@@ -493,7 +526,7 @@ old compiled loop body until `start!` respawns it.
 - `src/sim/think.clj`: the DATA think-tree + pure walker (`deliberate`) +
   pred/giver registries + `default-tree`. Idle behavior selection lives here.
 - `src/sim/ai.clj`: `advance-job` (job execution, every tick, NO speed gate;
-  speed lives in `job/segment-cost`) + `redeliberate` (idle choice: walks
+  speed lives in `movement/segment-cost`) + `redeliberate` (idle choice: walks
   `sim.think` then `job/assign`s the result; rare-throttled by the caller)
 - `src/sim/log.clj`: debug log helpers (append/recent/of-type/for-pawn)
 - `src/sim/inspect.clj`: PURE tile inspection: `describe-tile` (concept-line
@@ -502,8 +535,17 @@ old compiled loop body until `start!` respawns it.
   and ui-state atoms. left-click = cycle-select; right-click = move order
   (pawns only); `can-build-wall?`/`build-wall!`/`deconstruct-wall!` (build mode)
 - `src/sim/input.clj`: InputAdapter proxy (mouse/keys → commands + pause +
-  backtick→debug + `B`→build mode (click place / shift-click deconstruct) +
-  `F1`/`F2`→region/pathgrid overlays + mouse-move→hover)
+  backtick→debug + `F1`/`F2`→region/pathgrid overlays + mouse-move→hover).
+  Placement modes are NOT hand-branched here anymore: a `tool-keys` map enters a
+  mode and the left-press/drag/commit/cancel all dispatch through the `sim.tools`
+  registry. Add a tool = a `tools/by-mode` entry + one `tool-keys` line; the proxy
+  is untouched.
+- `src/sim/tools.clj`: the interaction-tool (RimWorld Designator) registry.
+  `by-mode` maps a ui-state `:mode` to a tool spec: `:drag?` true (a rectangle
+  gesture, `:on-commit [start current erase?]`) or false (a click gesture,
+  `:on-click [tx ty shift?]`), the handlers calling `sim.command` verbs. Placement
+  behavior is DATA, so a new verb (mine/chop/floor) is a registry entry, not edits
+  across sim.input. `:select` is the default fall-through, not a tool.
 - `src/sim/ui_state.clj`: camera + `:selected` (any kind) + `:hover` + `:mode` +
   `:debug?`/`:debug-regions?`/`:debug-pathgrid?` view-state (plain data);
   `selected`/`select!`, `hover`/`set-hover!`, `debug?`/`toggle-debug!` (+ the
