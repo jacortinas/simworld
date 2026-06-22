@@ -18,6 +18,12 @@
     (is (false? (:drag? t))   "build places on a single click, not a drag")
     (is (fn? (:on-click t))   "a click tool exposes :on-click")))
 
+(deftest build-door-is-a-click-tool
+  (let [t (tools/tool :build-door)]
+    (is (some? t))
+    (is (false? (:drag? t))   "door placement is a single click, like walls")
+    (is (fn? (:on-click t))   "a click tool exposes :on-click")))
+
 (deftest zone-is-a-drag-tool
   (let [t (tools/tool :zone-stockpile)]
     (is (some? t))

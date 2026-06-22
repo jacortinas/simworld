@@ -33,7 +33,17 @@
    one or more region NODES; cross-chunk adjacency edges link them into a graph.
    A second union-find pass over the graph assigns region NODES to connected
    COMPONENTS (Districts). reachable? compares component ids: still O(1). A full
-   open map spanning multiple chunks has multiple region nodes but one component."
+   open map spanning multiple chunks has multiple region nodes but one component.
+
+   PORTAL REGIONS (doors): a door is a PASSABLE cell (A* steps through it) that
+   the flood treats as its OWN 1-cell region. The flood will not cross a portal
+   cell (it is a barrier for region growth), but build-graph still links the
+   portal region to its passable neighbors via the normal corner-rule edges, so
+   the two sides stay in the SAME component: reachable? <=> find-path is intact
+   (a door never blocks a route). The portal region is exactly the boundary the
+   rooms layer (Spec 3) flood-stops at, which is what makes a doored enclosure a
+   room. Portal cells are read from the PathGrid's :portals array, so regions
+   stay a pure projection of the PathGrid (the memo key is unchanged)."
   (:require
    [sim.pathgrid :as pathgrid]
    [sim.tile     :as tile]))
@@ -124,12 +134,17 @@
 (def ^:private ^"[I" flood-dy (int-array [-1 -1 -1  0 0  1 1 1]))
 
 (defn- flood-chunk!
-  "Reset chunk [x0..x1]x[y0..y1] from `costs` (blocked -> -1), then flood its
-   passable cells into region ids (base + local scan-order index), 8-connected
-   with the corner rule, never leaving the chunk. Mutates `cell->region`."
-  [cell->region costs width height x0 y0 x1 y1 base]
+  "Reset chunk [x0..x1]x[y0..y1] from `costs`/`portals` (blocked -> -1, portal
+   -> -3, other passable -> -2), then flood its non-portal passable cells into
+   region ids (base + local scan-order index), 8-connected with the corner rule,
+   never leaving the chunk. Each portal (door) cell becomes its OWN 1-cell region
+   (assigned the next local id, no flood) and is never absorbed by a neighbor's
+   flood (the flood only consumes -2 cells), so it is a region barrier. Mutates
+   `cell->region`."
+  [cell->region costs portals width height x0 y0 x1 y1 base]
   (let [^ints  cell->region cell->region
         ^doubles costs costs
+        ^booleans portals portals
         width  (long width)
         height (long height)
         x0     (long x0)
@@ -137,24 +152,37 @@
         x1     (long x1)
         y1     (long y1)
         base   (long base)]
-    ;; reset: passable -> -2 (unassigned), blocked -> -1
+    ;; reset: blocked -> -1, portal (passable) -> -3, other passable -> -2
     (loop [y y0]
       (when (<= y y1)
         (loop [x x0]
           (when (<= x x1)
             (let [i (tile/idx width x y)]
-              (aset cell->region i (int (if (< (aget costs i) Double/POSITIVE_INFINITY) -2 -1))))
+              (aset cell->region i
+                    (int (cond
+                           (>= (aget costs i) Double/POSITIVE_INFINITY) -1
+                           (aget portals i)                            -3
+                           :else                                       -2))))
             (recur (inc x))))
         (recur (inc y))))
-    ;; flood each still-unassigned passable cell in scan order
+    ;; scan: a portal becomes its own 1-cell region (no flood); a normal cell
+    ;; seeds a region and floods its -2 neighbors (never crossing a -3 portal or
+    ;; a -1 blocker). Both consume a local id, so the per-chunk id range still
+    ;; fits in max-per-chunk (worst case: every cell its own region).
     (let [stack (java.util.ArrayDeque.)]
       (loop [y y0 local (long 0)]
         (when (<= y y1)
           (let [next-local
                 (loop [x x0 local (long local)]
                   (if (<= x x1)
-                    (let [i (tile/idx width x y)]
-                      (if (== (aget cell->region i) -2)
+                    (let [i (tile/idx width x y)
+                          s (aget cell->region i)]
+                      (cond
+                        (== s -3)                       ; portal: own region, no flood
+                        (do (aset cell->region i (int (+ base local)))
+                            (recur (inc x) (inc local)))
+
+                        (== s -2)                       ; normal: seed + flood
                         (let [rid (+ base local)]
                           (aset cell->region i (int rid))
                           (.push stack (int i))
@@ -171,13 +199,15 @@
                                         (aset cell->region ni (int rid))
                                         (.push stack (int ni)))))))))
                           (recur (inc x) (inc local)))
+
+                        :else                           ; -1 blocked, or already assigned
                         (recur (inc x) local)))
                     local))]
             (recur (inc y) (long next-local))))))))
 
 (defn- build-cell->region
   "Fresh int-array (-1 everywhere), then flood every chunk."
-  ^ints [^long width ^long height ^doubles costs]
+  ^ints [^long width ^long height ^doubles costs ^booleans portals]
   (let [arr (int-array (* width height) -1)
         nxc (n-chunks width)
         nyc (n-chunks height)]
@@ -187,7 +217,7 @@
               x1 (min (dec (+ x0 chunk-size)) (dec width))
               y1 (min (dec (+ y0 chunk-size)) (dec height))
               base (* (chunk-index cx cy nxc) max-per-chunk)]
-          (flood-chunk! arr costs width height x0 y0 x1 y1 base))))
+          (flood-chunk! arr costs portals width height x0 y0 x1 y1 base))))
     arr))
 
 ;; Forward neighbor offsets (right, down, down-right, down-left): the 4 directions
@@ -293,20 +323,28 @@
   "Full chunked region index from a PathGrid (NO cache). Used for the cold full
    build and as the from-scratch oracle in tests."
   [pg]
-  (let [width  (long (:width pg))
-        height (long (:height pg))
-        costs  ^doubles (:costs pg)]
-    (finalize width height (build-cell->region width height costs) costs)))
+  (let [width   (long (:width pg))
+        height  (long (:height pg))
+        costs   ^doubles (:costs pg)
+        portals ^booleans (:portals pg)]
+    (finalize width height (build-cell->region width height costs portals) costs)))
 
 (defn- dirty-chunks
-  "Set of [cx cy] chunks containing at least one cell whose cost differs between
-   `prev` and `costs`. O(cells) linear compare (cold path only)."
-  [^doubles prev ^doubles costs ^long width]
-  (let [n (alength costs)]
+  "Set of [cx cy] chunks containing at least one cell whose cost OR portal flag
+   differs between the previous and current PathGrid. Portals must be diffed too:
+   placing a door leaves the cell cost unchanged (a door is passable) and flips
+   only the portal bit, so a cost-only diff would miss it and never re-flood the
+   new portal region. O(cells) linear compare (cold path only)."
+  ;; width is NOT ^long-hinted: this fn already takes 5 args, and a primitive arg
+  ;; hint caps a fn at 4 (see CLAUDE.md). Rebind to a primitive inside instead.
+  [^doubles prev-costs ^doubles costs ^booleans prev-portals ^booleans portals width]
+  (let [width (long width)
+        n (alength costs)]
     (loop [i 0 acc (transient #{})]
       (if (< i n)
         (recur (inc i)
-               (if (== (aget prev i) (aget costs i))
+               (if (and (== (aget prev-costs i) (aget costs i))
+                        (= (aget prev-portals i) (aget portals i)))
                  acc
                  (conj! acc [(quot (rem i width) chunk-size)
                              (quot (quot i width) chunk-size)])))
@@ -315,9 +353,10 @@
 (defn- update-cell->region
   "Clone `prev` and re-flood ONLY the dirty chunks. Untouched chunks keep their
    (stable, chunk-canonical) ids unchanged."
-  [prev width height costs dirty]
-  (let [^ints   arr    (aclone ^ints prev)
-        ^doubles costs costs
+  [prev width height costs portals dirty]
+  (let [^ints   arr     (aclone ^ints prev)
+        ^doubles  costs   costs
+        ^booleans portals portals
         width  (long width)
         height (long height)
         nxc    (n-chunks width)]
@@ -327,35 +366,37 @@
             x1 (min (dec (+ x0 chunk-size)) (dec width))
             y1 (min (dec (+ y0 chunk-size)) (dec height))
             base (* (chunk-index cx cy nxc) max-per-chunk)]
-        (flood-chunk! arr costs width height x0 y0 x1 y1 base)))
+        (flood-chunk! arr costs portals width height x0 y0 x1 y1 base)))
     arr))
 
-;; Size-1 memo keyed by PathGrid identity. Holds the cost array too, so the next
-;; change can diff against it (the incremental path). A new PathGrid identity
-;; is a new key -> recompute, so the cache CANNOT go stale (no false negatives).
-(defonce ^:private cache (atom nil))     ; {:pathgrid pg :costs ^doubles :index index}
+;; Size-1 memo keyed by PathGrid identity. Holds the cost AND portal arrays too,
+;; so the next change can diff against them (the incremental path). A new PathGrid
+;; identity is a new key -> recompute, so the cache CANNOT go stale (no false
+;; negatives).
+(defonce ^:private cache (atom nil))     ; {:pathgrid pg :costs ^doubles :portals ^booleans :index index}
 
 (defn of-pathgrid
   "Region index for a PathGrid, memoized by IDENTITY. On a miss with a
-   dimension-compatible cached predecessor, re-floods only the chunks whose costs
-   changed (found by diffing the cached cost array) and rebuilds the cheap graph +
-   components; otherwise a full build. A new identity always recomputes, so the
-   cache cannot go stale."
+   dimension-compatible cached predecessor, re-floods only the chunks whose cost
+   or portal flag changed (found by diffing the cached arrays) and rebuilds the
+   cheap graph + components; otherwise a full build. A new identity always
+   recomputes, so the cache cannot go stale."
   [pg]
   (let [c @cache]
     (if (and c (identical? pg (:pathgrid c)))
       (:index c)
-      (let [w     (long (:width pg))
-            h     (long (:height pg))
-            costs ^doubles (:costs pg)
-            ci    (:index c)
+      (let [w       (long (:width pg))
+            h       (long (:height pg))
+            costs   ^doubles (:costs pg)
+            portals ^booleans (:portals pg)
+            ci      (:index c)
             new-index
             (if (and c (= (:width ci) w) (= (:height ci) h))
-              (let [dirty (dirty-chunks (:costs c) costs w)
-                    c->r  (update-cell->region (:cell->region ci) w h costs dirty)]
+              (let [dirty (dirty-chunks (:costs c) costs (:portals c) portals w)
+                    c->r  (update-cell->region (:cell->region ci) w h costs portals dirty)]
                 (finalize w h c->r costs))
               (index pg))]
-        (reset! cache {:pathgrid pg :costs costs :index new-index})
+        (reset! cache {:pathgrid pg :costs costs :portals portals :index new-index})
         new-index))))
 
 (defn of-grid

@@ -33,7 +33,7 @@
    sim.defs/::thing-entry's opt-keys — a content key absent here is silently
    dropped at construction (acceptable at small scale; derive one from the other
    when thing-defs proliferate)."
-  [:kind :ticker-type :move-ticks :needs :material :traits :skills :graphic :blocks-path?])
+  [:kind :ticker-type :move-ticks :needs :material :traits :skills :graphic :blocks-path? :portal?])
 
 (defn make-thing
   "Construct an entity instance of thing-def `def-id` at [x y]. Reads the
@@ -93,6 +93,16 @@
   "Construct a built wall (the :wall thing-def) at [x y]. Pure -- does NOT insert."
   [pos]
   (-> (make-thing :wall pos)
+      (assoc :state :built)))
+
+;; A door: a built, PASSABLE building. Shares make-building's :built scaffolding,
+;; but carries :portal? true (copied from the :door thing-def), which sim.pathgrid
+;; reads to mark its cell a portal and sim.regions reads to flood it as its own
+;; 1-cell region. Inert otherwise (no band system reads it yet).
+(defn make-door
+  "Construct a built door (the :door thing-def) at [x y]. Pure -- does NOT insert."
+  [pos]
+  (-> (make-thing :door pos)
       (assoc :state :built)))
 
 ;; ---------------------------------------------------------------------------

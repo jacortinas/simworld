@@ -17,6 +17,8 @@
      space        → toggle pause
      1 / 2 / 3    → set sim speed (slow / medium / fast)
      Z            → enter stockpile zoning mode
+     B            → enter wall build mode
+     O            → enter door build mode
      Esc          → cancel the active zoning tool; else open the pause menu
      mouse-move   → record hovered tile (sim.ui-state/set-hover!)
 
@@ -42,8 +44,11 @@
   "Keycode -> the ui-state :mode it enters. The one input-layer half of a tool
    (libGDX keys live here, behavior lives in sim.tools); adding a tool's hotkey
    is a one-line edit here, not a new keyDown branch."
+  ;; B/O are per-building hotkeys; a categorized build MENU will subsume them
+  ;; later (then a tool carries which def to place, not a dedicated key each).
   {(int Input$Keys/Z) :zone-stockpile
-   (int Input$Keys/B) :build})
+   (int Input$Keys/B) :build
+   (int Input$Keys/O) :build-door})
 
 (defn- shift-down?
   "Is either Shift key currently held? Polled from live libGDX input — used to

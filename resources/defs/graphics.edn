@@ -10,6 +10,10 @@
  :gravel   {:image "graphics/gravel.png"}
  :stone    {:image "graphics/stone.png"}
  :wall     {:image "graphics/wall.png"}
+ ;; Placeholder: the door reuses the wall sprite until a dedicated door asset
+ ;; exists. Swap :image for a real door PNG (or a hand-made one) with no code
+ ;; change; this indirection is exactly why the graphic is a content ref.
+ :door     {:image "graphics/wall.png"}
  :water    {:cell [:animated 0 10] :anim {:frames 11 :fps 6}}
  :colonist {:image "graphics/colonist.png" :directional true}
  :tree     {:image "graphics/tree.png"}

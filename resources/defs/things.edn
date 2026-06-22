@@ -13,4 +13,10 @@
  :food     {:kind :item :ticker-type :long :material :food  :graphic :apple}
  :stone    {:kind :item :ticker-type :long :material :stone :graphic :rock}
  :wall     {:kind :building :ticker-type :long :material :stone
-            :graphic :wall :blocks-path? true}}
+            :graphic :wall :blocks-path? true}
+ ;; A door: a PASSABLE building (no path block) that the region layer treats as
+ ;; its own 1-cell portal region. Passable for A* (pawns walk through), but a
+ ;; flood barrier for regions, so the rooms it bounds stay distinct. :portal? is
+ ;; the flag that drives that portal-region behavior in sim.pathgrid/sim.regions.
+ :door     {:kind :building :ticker-type :long :material :wood
+            :graphic :door :blocks-path? false :portal? true}}

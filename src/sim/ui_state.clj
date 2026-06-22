@@ -29,7 +29,7 @@
          :debug?          false
          :debug-regions?  false
          :debug-pathgrid? false
-         :mode            :select   ; :select | :zone-stockpile | :build
+         :mode            :select   ; :select | :zone-stockpile | :build | :build-door
          :drag            nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
 
 (defn camera [] (:camera @ui-state))
@@ -95,7 +95,7 @@
 ;; ---------------------------------------------------------------------------
 
 (defn mode
-  "Current interaction mode: :select (default) or :zone-stockpile."
+  "Current interaction mode: :select (default), :zone-stockpile, :build, or :build-door."
   []
   (:mode @ui-state :select))
 

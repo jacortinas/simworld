@@ -119,7 +119,7 @@
   (testing "the bundled registry includes the :thing category"
     (is (contains? (defs/load!) :thing)))
   (testing "ids enumerates every shipped thing type"
-    (is (= #{:colonist :tree :wood :food :stone :wall} (defs/ids :thing)))))
+    (is (= #{:colonist :tree :wood :food :stone :wall :door} (defs/ids :thing)))))
 
 (deftest load-rejects-malformed-thing-entry
   (testing "an unknown :ticker-type throws (the band set is closed)"
@@ -146,7 +146,7 @@
     (is (contains? (defs/load!) :graphic)))
   (testing "every shipped graphic id is present"
     (is (= #{:grass :dirt :gravel :stone :wall :water
-             :colonist :tree :wood :rock :apple}
+             :colonist :tree :wood :rock :apple :door}
            (defs/ids :graphic)))))
 
 (deftest load-rejects-malformed-graphic-entry

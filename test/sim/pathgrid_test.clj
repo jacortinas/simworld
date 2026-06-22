@@ -22,6 +22,21 @@
     (is (not (pathgrid/passable? pg 1 1)) "building cell blocked")
     (is (pathgrid/passable? pg 0 0) "other cells unaffected")))
 
+(deftest door-cell-is-passable-but-a-portal
+  (testing "a :portal? door leaves its cell passable (no INFINITY) yet flags it
+            a portal, so A* walks through while regions treat it as a boundary"
+    (let [door {:kind :building :blocks-path? false :portal? true :pos [1 1]}
+          pg   (pathgrid/build (tile/make-grid 3 3) [door])]
+      (is (pathgrid/passable? pg 1 1) "door cell stays passable")
+      (is (= 1.0 (pathgrid/cost pg 1 1)) "door keeps the underlying terrain cost")
+      (is (pathgrid/portal? pg 1 1) "door cell is a portal")
+      (is (not (pathgrid/portal? pg 0 0)) "a plain floor cell is not a portal")
+      (is (not (pathgrid/portal? pg -1 0)) "oob is not a portal"))))
+
+(deftest a-grid-with-no-doors-has-no-portals
+  (let [pg (pathgrid/build (tile/make-grid 3 3) [])]
+    (is (not (pathgrid/portal? pg 1 1)) "no buildings -> no portal cells")))
+
 (deftest oob-cost-is-infinite
   (let [pg (pathgrid/build (tile/make-grid 3 3) [])]
     (is (Double/isInfinite (pathgrid/cost pg -1 0)))

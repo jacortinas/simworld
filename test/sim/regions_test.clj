@@ -148,6 +148,90 @@
                   (str "reachable? must match find-path for " label)))))))))
 
 ;; ---------------------------------------------------------------------------
+;; PORTAL REGIONS (doors): a door is its OWN 1-cell region (a flood barrier), yet
+;; the two sides it separates stay REACHABLE through it (graph-linked, one
+;; component). Contrast a wall in the same doorway, which disconnects them. This
+;; is the substrate rooms (Spec 3) read: the portal region is the flood-stop.
+;; ---------------------------------------------------------------------------
+
+(defn- doorway-world
+  "A 3x3 cell with walls top and bottom, leaving floor(0,1)-X-floor(2,1) where X
+   is the building placed by `make` at (1,1)."
+  [make]
+  (let [grid (reduce (fn [g x] (-> g (tile/set-tile x 0 :wall) (tile/set-tile x 2 :wall)))
+                     (tile/make-grid 3 3)
+                     (range 3))]
+    (-> {:grid grid :entities {} :kinds (entity/empty-kinds)}
+        (entity/add-entity (make [1 1])))))
+
+(deftest door-is-its-own-region-but-keeps-both-sides-reachable
+  (testing "a door at (1,1) is a distinct region from the floors it joins, yet
+            left and right stay reachable through it (one component)"
+    (reset! @#'regions/cache nil)
+    (let [world (doorway-world entity/make-door)
+          idx   (regions/of-pathgrid (pathgrid/for-world world))
+          left  (regions/region-at idx 0 1)
+          door  (regions/region-at idx 1 1)
+          right (regions/region-at idx 2 1)]
+      (is (>= door 0) "the door cell is passable, so it has a real region id")
+      (is (not= left door)  "the door is its own region, not part of the left floor")
+      (is (not= right door) "the door is its own region, not part of the right floor")
+      (is (not= left right) "barriered flood: the two floors are separate regions")
+      (is (regions/reachable? world [0 1] [2 1])
+          "but you can still path through the door: same component"))))
+
+(deftest wall-in-the-same-doorway-disconnects-the-sides
+  (testing "swapping the door for a wall (the contrast case) DOES cut reachability"
+    (reset! @#'regions/cache nil)
+    (let [world (doorway-world entity/make-building)]
+      (is (not (regions/reachable? world [0 1] [2 1]))
+          "a wall in the doorway leaves the two floors in different components"))))
+
+;; ---------------------------------------------------------------------------
+;; ORACLE PROPERTY WITH DOORS: doors are passable, so find-path routes THROUGH
+;; them; reachable? must agree. Scatter random walls AND doors on multi-chunk
+;; grids (portals at chunk seams included) and assert reachable? <=> find-path
+;; for every passable pair, INCLUDING pairs whose endpoints land on a door cell.
+;; A portal that wrongly split a component would surface here as a false negative.
+;; ---------------------------------------------------------------------------
+
+(deftest reachable-matches-find-path-with-doors
+  (testing "with random walls + doors, reachable? still <=> find-path"
+    (reset! @#'regions/cache nil)
+    (let [rng      (java.util.Random. 13371337)
+          ri       (fn [n] (.nextInt rng (int n)))
+          terrains [:grass :grass :dirt :gravel :stone]]
+      (dotimes [_ 150]
+        (let [w     (+ 12 (ri 14))                    ; 12..25 -> 1..3 chunks
+              h     (+ 12 (ri 14))
+              cells (vec (repeatedly (* w h) #(nth terrains (ri (count terrains)))))
+              grid  {:width w :height h :tiles cells}
+              base  {:grid grid :entities {} :kinds (entity/empty-kinds)}
+              ;; scatter walls and doors on passable, distinct cells; each cell
+              ;; gets at most one building (can-build? equivalent: skip occupied)
+              world (reduce (fn [wd _]
+                              (let [x (ri w) y (ri h)]
+                                (if (and (passable-at? (:grid wd) x y)
+                                         (not (pathgrid/portal? (pathgrid/for-world wd) x y))
+                                         (pathgrid/passable? (pathgrid/for-world wd) x y))
+                                  (entity/add-entity wd (if (zero? (ri 2))
+                                                          (entity/make-building [x y])
+                                                          (entity/make-door [x y])))
+                                  wd)))
+                            base
+                            (range (ri 50)))           ; up to ~50 buildings
+              p-idx (filterv #(pathgrid/passable? (pathgrid/for-world world) (mod % w) (quot % w))
+                             (range (* w h)))]
+          (when (seq p-idx)
+            (dotimes [_ 6]
+              (let [pick #(let [i (nth p-idx (ri (count p-idx)))] [(mod i w) (quot i w)])
+                    s    (pick) g (pick)
+                    label (str s "->" g " on " w "x" h)]
+                (is (= (regions/reachable? world s g)
+                       (some? (pathfinding/find-path world s g)))
+                    (str "reachable? must match find-path for " label))))))))))
+
+;; ---------------------------------------------------------------------------
 ;; CHUNKED MODEL: a region is bounded to a 12x12 chunk, so a fully-open map
 ;; larger than one chunk has MULTIPLE region nodes but ONE component. count-regions
 ;; counts NODES; reachable? compares COMPONENTS.
@@ -233,6 +317,35 @@
                            world))
                 inc-idx   (regions/of-pathgrid (pathgrid/for-world world'))   ; incremental
                 full-idx  (fresh-index world')]                               ; from scratch
+            (is (= (vec (:cell->region inc-idx)) (vec (:cell->region full-idx)))
+                (str "cell->region must match a fresh build after edit " n))
+            (is (= (:region->component inc-idx) (:region->component full-idx))
+                (str "components must match a fresh build after edit " n))
+            (recur world' (inc n))))))))
+
+(deftest incremental-matches-from-scratch-with-doors
+  (testing "the incremental index equals a fresh build when toggling walls AND
+            doors. A door changes only the portal bit (cost is unchanged), so this
+            specifically guards that dirty-chunks diffs portals, not just costs."
+    (reset! @#'regions/cache nil)
+    (let [rng   (java.util.Random. 909090)
+          ri    (fn [n] (.nextInt rng (int n)))
+          w 20 h 20
+          grid  (tile/make-grid w h)
+          base  {:grid grid :entities {} :kinds (entity/empty-kinds)}]
+      (loop [world base, n 0]
+        (when (< n 30)
+          (let [x (ri w) y (ri h)
+                existing (first (filter #(= [x y] (:pos %)) (vals (:entities world))))
+                world' (if existing
+                         (entity/remove-entity world (:id existing))
+                         (if (pathgrid/passable? (pathgrid/for-world world) x y)
+                           (entity/add-entity world (if (zero? (ri 2))
+                                                      (entity/make-building [x y])
+                                                      (entity/make-door [x y])))
+                           world))
+                inc-idx  (regions/of-pathgrid (pathgrid/for-world world'))   ; incremental
+                full-idx (fresh-index world')]                               ; from scratch
             (is (= (vec (:cell->region inc-idx)) (vec (:cell->region full-idx)))
                 (str "cell->region must match a fresh build after edit " n))
             (is (= (:region->component inc-idx) (:region->component full-idx))

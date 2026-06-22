@@ -3,6 +3,12 @@
    primitive idiom). costs[idx] = terrain move-cost, or Double/POSITIVE_INFINITY
    if the terrain is impassable OR a blocking building occupies the cell.
 
+   A second parallel array, :portals (boolean-array), marks PORTAL cells: a door
+   is a PASSABLE building (finite cost, so A* walks through it) flagged here so
+   sim.regions can flood it as its own 1-cell region (the rooms boundary). Costs
+   alone cannot encode this: a door cell is cost-identical to the floor it sits
+   on, so portals is the channel that carries 'this passable cell is special'.
+
    PathGrid is a PURE function of (terrain grid, building set), so it is MEMOIZED
    by [grid identity, building-set identity] in a size-1 defonce atom, never
    stored in the world. (:kinds :building) is a persistent sorted-set whose
@@ -19,25 +25,32 @@
 (set! *warn-on-reflection* true)
 
 (defn build
-  "Per-cell cost double-array for `grid`, INFINITY at each blocking building.
-   `buildings` is a seq of building entities; one with :blocks-path? and an
-   in-bounds :pos stamps INFINITY at its cell. Pure."
+  "Per-cell cost double-array for `grid`, INFINITY at each blocking building,
+   plus a parallel :portals boolean-array marking each passable :portal? (door)
+   building's cell. `buildings` is a seq of building entities: one with
+   :blocks-path? stamps INFINITY at its cell; one with :portal? (and not
+   blocking) flags its cell a portal while leaving the terrain cost intact. Pure."
   [{:keys [width height tiles]} buildings]
-  (let [width  (long width)
-        height (long height)
-        n      (* width height)
-        costs  (double-array n)]
+  (let [width   (long width)
+        height  (long height)
+        n       (* width height)
+        costs   (double-array n)
+        portals (boolean-array n)]
     (dotimes [i n]
       (let [t (nth tiles i)]
         (aset costs i (if (tile/passable? t)
                         (tile/move-cost t)            ; already ^double
                         Double/POSITIVE_INFINITY))))
     (doseq [b buildings]
-      (when (:blocks-path? b)
-        (let [[x y] (:pos b)]
-          (when (and x y (tile/in-bounds? width height x y))
-            (aset costs (tile/idx width x y) Double/POSITIVE_INFINITY)))))
-    {:width width :height height :costs costs}))
+      (let [[x y] (:pos b)]
+        (when (and x y (tile/in-bounds? width height x y))
+          (let [i (tile/idx width x y)]
+            ;; blocking wins over portal (a cell is never both in practice): a
+            ;; blocker stamps INFINITY, a non-blocking portal flags the cell.
+            (cond
+              (:blocks-path? b) (aset costs i Double/POSITIVE_INFINITY)
+              (:portal? b)      (aset portals i true))))))
+    {:width width :height height :costs costs :portals portals}))
 
 (defn cost
   "Traversal cost at (x, y); INFINITY if out of bounds or blocked."
@@ -52,6 +65,15 @@
   "True iff (x, y) is in-bounds and its cost is finite."
   [pathgrid x y]
   (< (cost pathgrid x y) Double/POSITIVE_INFINITY))
+
+(defn portal?
+  "True iff (x, y) is in-bounds and a portal (door) cell. Portal cells are always
+   passable; this is the extra bit regions reads to flood them as their own region."
+  [pathgrid x y]
+  (let [{:keys [width height]} pathgrid
+        ^booleans portals (:portals pathgrid)]
+    (and (tile/in-bounds? width height x y)
+         (aget portals (tile/idx width x y)))))
 
 ;; Size-1 memo: {:grid <grid> :bset <building-id-set> :pathgrid <pg>}.
 (defonce ^:private cache (atom nil))

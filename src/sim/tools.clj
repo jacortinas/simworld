@@ -28,8 +28,15 @@
    {:drag?    false
     :on-click (fn [tx ty shift?]
                 (if shift?
-                  (command/deconstruct-wall! tx ty)
+                  (command/deconstruct-building! tx ty)
                   (command/build-wall! tx ty)))}
+
+   :build-door
+   {:drag?    false
+    :on-click (fn [tx ty shift?]
+                (if shift?
+                  (command/deconstruct-building! tx ty)
+                  (command/build-door! tx ty)))}
 
    :zone-stockpile
    {:drag?     true

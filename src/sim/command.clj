@@ -35,10 +35,11 @@
        (filter #(= [tx ty] (:pos %)))
        first))
 
-(defn can-build-wall?
-  "True if a wall may be placed at [x y]: in-bounds, terrain passable, no pawn
-   on the cell, and no existing building there. Pure; shared by the build
-   cursor indicator and build-wall!."
+(defn can-build?
+  "True if a building may be placed at [x y]: in-bounds, terrain passable, no
+   pawn on the cell, and no existing building there. The rule is independent of
+   WHAT is placed (walls and doors share it), so it is the single predicate the
+   build cursor and every build-* command read. Pure."
   [world [x y]]
   (let [grid (:grid world)]
     (and (in-bounds? grid x y)
@@ -95,20 +96,35 @@
   (swap! world/world zone/remove-cells start current)
   nil)
 
-(defn build-wall!
-  "Place one wall building at tile [tx ty], if can-build-wall?. The world-side
-   of build mode; sim.input handles the click and cursor."
-  [tx ty]
+(defn- place-building!
+  "Shared placement: add `(make-fn [tx ty])` at the cell if can-build?. The
+   world-side of every build tool; sim.input handles the click and cursor. The
+   constructor is the only thing that varies between walls and doors (and the
+   future build menu just supplies a different one)."
+  [tx ty make-fn]
   (swap! world/world
          (fn [w]
-           (if (can-build-wall? w [tx ty])
-             (entity/add-entity w (entity/make-building [tx ty]))
+           (if (can-build? w [tx ty])
+             (entity/add-entity w (make-fn [tx ty]))
              w)))
   nil)
 
-(defn deconstruct-wall!
-  "Remove the wall building at tile [tx ty], if any. Terrain is untouched (it
-   was never overwritten), so the cell simply becomes passable again."
+(defn build-wall!
+  "Place one wall building at tile [tx ty], if can-build?."
+  [tx ty]
+  (place-building! tx ty entity/make-building))
+
+(defn build-door!
+  "Place one door building at tile [tx ty], if can-build?. A door is a passable
+   portal building (see sim.entity/make-door); placement validity is identical
+   to a wall's."
+  [tx ty]
+  (place-building! tx ty entity/make-door))
+
+(defn deconstruct-building!
+  "Remove the building at tile [tx ty], if any (wall or door alike). Terrain is
+   untouched (it was never overwritten), so the cell simply becomes passable
+   again."
   [tx ty]
   (swap! world/world
          (fn [w]

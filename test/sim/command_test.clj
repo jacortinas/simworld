@@ -93,26 +93,38 @@
       (is (empty? (filter #(= :job/assigned (:type %)) (:log @world/world)))
           "and no false :job/assigned log entry is written"))))
 
-(deftest can-build-wall-allows-open-passable-cells
+(deftest can-build-allows-open-passable-cells
   (let [w {:grid (tile/make-grid 3 3) :entities {} :kinds (entity/empty-kinds)}]
-    (is (command/can-build-wall? w [1 1]))))
+    (is (command/can-build? w [1 1]))))
 
-(deftest can-build-wall-rejects-impassable-and-oob
+(deftest can-build-rejects-impassable-and-oob
   (let [w {:grid (tile/set-tile (tile/make-grid 3 3) 1 1 :wall)
            :entities {} :kinds (entity/empty-kinds)}]
-    (is (not (command/can-build-wall? w [1 1])) "impassable terrain")
-    (is (not (command/can-build-wall? w [5 5])) "out of bounds")))
+    (is (not (command/can-build? w [1 1])) "impassable terrain")
+    (is (not (command/can-build? w [5 5])) "out of bounds")))
 
-(deftest can-build-wall-rejects-occupied-and-built
+(deftest can-build-rejects-occupied-and-built
   (let [w (-> {:grid (tile/make-grid 3 3) :entities {} :kinds (entity/empty-kinds)}
               (entity/add-entity (entity/make-pawn "p" [0 0]))
               (entity/add-entity (entity/make-building [2 2])))]
-    (is (not (command/can-build-wall? w [0 0])) "pawn occupies the cell")
-    (is (not (command/can-build-wall? w [2 2])) "already a wall")))
+    (is (not (command/can-build? w [0 0])) "pawn occupies the cell")
+    (is (not (command/can-build? w [2 2])) "already a building")))
 
 (deftest build-and-deconstruct-wall-mutate-the-world
   (world/reset-world!)
   (command/build-wall! 3 3)
   (is (= 1 (count (entity/buildings @world/world))) "wall placed")
-  (command/deconstruct-wall! 3 3)
+  (command/deconstruct-building! 3 3)
   (is (zero? (count (entity/buildings @world/world))) "wall removed"))
+
+(deftest build-and-deconstruct-door-mutate-the-world
+  (world/reset-world!)
+  (command/build-door! 3 3)
+  (let [doors (entity/buildings @world/world)]
+    (is (= 1 (count doors)) "door placed")
+    (is (= :door (:def (first doors))) "the placed building is a door")
+    (is (false? (:blocks-path? (first doors))) "a door does not block the path")
+    (is (true? (:portal? (first doors))) "a door is a portal"))
+  ;; the shared deconstruct removes a door just like a wall
+  (command/deconstruct-building! 3 3)
+  (is (zero? (count (entity/buildings @world/world))) "door removed"))
