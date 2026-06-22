@@ -15,6 +15,7 @@
      middle-drag  → pan
      wheel        → zoom
      space        → toggle pause
+     1 / 2 / 3    → set sim speed (slow / medium / fast)
      Z            → enter stockpile zoning mode
      Esc          → cancel the active zoning tool; else open the pause menu
      mouse-move   → record hovered tile (sim.ui-state/set-hover!)
@@ -73,12 +74,13 @@
      :on-ui-click          -> (fn [sx sy] -> consumed?) offered every left click
                               BEFORE it becomes a world command
      :on-toggle-pause      -> (fn []) invoked on the space key
+     :on-set-speed         -> (fn [mult]) invoked on the 1/2/3 keys (optional)
      :on-open-pause-menu   -> (fn []) invoked on the Escape key (optional)
 
-   on-ui-click / on-toggle-pause / on-open-pause-menu are injected (rather
-   than required) so this namespace stays decoupled from the HUD and the game
-   loop — easy to test with stub fns."
-  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause on-open-pause-menu]}]
+   on-ui-click / on-toggle-pause / on-set-speed / on-open-pause-menu are
+   injected (rather than required) so this namespace stays decoupled from the
+   clock, the HUD, and the game loop: easy to test with stub fns."
+  [{:keys [camera-fn tile-size world-fn on-ui-click on-toggle-pause on-set-speed on-open-pause-menu]}]
   (let [drag (atom nil)]            ; {:button b :x sx :y sy}
     (proxy [InputAdapter] []
       (scrolled [_amount-x amount-y]
@@ -105,6 +107,11 @@
               ;; importing sim.clock. The debug toggle is called DIRECTLY because
               ;; we already depend on sim.ui-state (zoom/pan) -- no new coupling.
               Input$Keys/SPACE  (do (when on-toggle-pause (on-toggle-pause)) true)
+              ;; 1/2/3 set sim speed. Injected (on-set-speed) for the same reason
+              ;; space is: keep this proxy from importing sim.clock.
+              Input$Keys/NUM_1  (do (when on-set-speed (on-set-speed 1.0)) true)
+              Input$Keys/NUM_2  (do (when on-set-speed (on-set-speed 2.0)) true)
+              Input$Keys/NUM_3  (do (when on-set-speed (on-set-speed 3.0)) true)
               Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
               Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
               Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay

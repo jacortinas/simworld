@@ -34,15 +34,25 @@
 ;; action is to press play. Nothing in the world moves until then.
 (defonce ^:private paused? (atom true))
 
+;; Speed is the THIRD time axis (after running? and paused?): a tick-rate
+;; multiplier, RimWorld's 1x/2x/3x. Because the whole sim is denominated in
+;; ticks (movement segment-cost, needs decay, the schedule bands), one
+;; multiplier scales everything uniformly. It changes only how often a tick
+;; fires in WALL-CLOCK, never the tick SEQUENCE, so same-seed runs stay
+;; bit-identical. Orthogonal to pause: un-pausing resumes at the last speed.
+(defonce ^:private speed (atom 1.0))
+
 (defn- drain-ticks
-  "Apply simulation ticks until the accumulator is below one tick. Returns
-   the remaining accumulator. The inner loop returns a value (the leftover
-   acc) rather than trying to recur up to a caller."
-  ^long [^long acc]
+  "Apply simulation ticks until the accumulator is below one effective tick
+   interval. `interval` is tick-nanos divided by the speed multiplier, so a
+   faster speed crosses the threshold more often and drains more ticks per
+   call. Returns the remaining accumulator. The inner loop returns a value
+   (the leftover acc) rather than trying to recur up to a caller."
+  ^long [^long acc ^long interval]
   (loop [acc acc]
-    (if (>= acc tick-nanos)
+    (if (>= acc interval)
       (do (swap! world/world simulation/tick)
-          (recur (- acc tick-nanos)))
+          (recur (- acc interval)))
       acc)))
 
 (defn- run-loop! []
@@ -53,7 +63,8 @@
             elapsed  (- now prev)
             sim-acc' (if @paused?
                        sim-acc
-                       (drain-ticks (+ sim-acc elapsed)))]
+                       (drain-ticks (+ sim-acc elapsed)
+                                    (long (/ (double tick-nanos) (double @speed)))))]
         (Thread/sleep 1)
         (recur now sim-acc')))))
 
@@ -103,3 +114,17 @@
   (if (swap! paused? not) :paused :running))
 
 (defn paused?* [] @paused?)
+
+;; ---------------------------------------------------------------------------
+;; Speed control. set-speed! only sets the multiplier (orthogonal to pause);
+;; the UI's "select a speed = un-pause" policy lives in the caller (it pairs
+;; set-speed! with resume!), keeping this primitive single-purpose.
+;; ---------------------------------------------------------------------------
+
+(defn set-speed!
+  "Set the tick-rate multiplier (e.g. 1.0, 2.0, 3.0). Clamped positive so the
+   effective interval can never be zero or negative. Returns the new speed."
+  [mult]
+  (reset! speed (max 0.1 (double mult))))
+
+(defn speed* [] @speed)

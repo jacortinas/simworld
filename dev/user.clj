@@ -48,14 +48,21 @@
    it — source order matters on the first load.)"
   []
   (let [w @world/world]
-    (println (format "loop:%s  paused:%s  tick:%d  pawns:%d  items:%d  log:%d"
+    (println (format "loop:%s  paused:%s  speed:%dx  tick:%d  pawns:%d  items:%d  log:%d"
                      (if (clock/running?*) "running" "stopped")
                      (boolean (clock/paused?*))
+                     (long (clock/speed*))
                      (long (:clock w))
                      (count (entity/pawns w))
                      (count (filter :pos (entity/items w)))
                      (count (:log w)))))
   nil)
+
+;; Speed control: 1.0/2.0/3.0 = the 1x/2x/3x buttons (the top-right cluster and
+;; the 1/2/3 keys hit the same clock fns). Selecting a speed resumes, matching
+;; the in-window widget. Defined after status so the cold-start compile resolves
+;; the (status) echo.
+(defn speed! [n] (clock/set-speed! n) (clock/resume!) (status))
 
 (defn go!
   "Start the SIM running: bring the clock up (idempotent) and resume ticking,
