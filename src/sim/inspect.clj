@@ -15,8 +15,10 @@
 (set! *warn-on-reflection* true)
 
 ;; Things worth selecting/labelling. Base terrain is NEVER here. Future kinds
-;; (:animal :monster) append for free — describe-tile/selectable-at pick them up.
-(def selectable-kinds #{:pawn :item :tree})
+;; (:animal :monster) append for free: describe-tile/selectable-at pick them up.
+;; :building is selectable so a wall/door can be inspected and selected; it is
+;; matched by FOOTPRINT (any of its cells), not just its origin (selectable-at).
+(def selectable-kinds #{:pawn :item :tree :building})
 
 ;; Char cap per concept line. Default font isn't monospace, so this is a rough
 ;; visual cap, not pixel-accurate — tune live in the REPL. A cut line is padded
@@ -25,11 +27,17 @@
 
 (defn selectable-at
   "Entities at tile [x y] whose :kind is selectable, SORTED BY :id (stable
-   cycle order). Carried items (:pos nil) never match a tile, so they're
-   excluded naturally."
+   cycle order). A building matches by FOOTPRINT (any cell of its :size rect), so
+   a multi-cell wall/door is selectable from any of its cells; everything else
+   matches its single :pos. Carried items (:pos nil) never match a tile, so
+   they're excluded naturally."
   [world [x y]]
   (->> (entity/all-entities world)
-       (filter #(and (selectable-kinds (:kind %)) (= [x y] (:pos %))))
+       (filter (fn [e]
+                 (and (selectable-kinds (:kind e))
+                      (if (= :building (:kind e))
+                        (entity/building-covers? e [x y])
+                        (= [x y] (:pos e))))))
        (sort-by :id)))
 
 (defn- truncate
@@ -57,6 +65,7 @@
     :pawn (:name ent)
     :item (str/capitalize (name (:material ent)))
     :tree "Tree"
+    :building (str/capitalize (name (:def ent :building)))   ; "Wall" / "Door"
     (str/capitalize (name (:kind ent)))))
 
 (defn describe-tile

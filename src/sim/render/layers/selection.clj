@@ -26,18 +26,22 @@
 (def ^:private box-color (Color. 1.0 0.85 0.2 0.95)) ; amber, like the debug goal
 
 (defn selection-box-rects
-  "Four thin edge rects [x y w h] (doubles, world px) framing the tile whose
-   bottom-left world-pixel is `[px py]`. The Y-flip and any glide are applied
-   upstream by sim.render.interp/draw-pos. Order: bottom, top, left, right."
-  [[px py] tile-size]
-  (let [ts (double tile-size)
-        t  box-thickness
-        px (double px)
-        py (double py)]
-    [[px              py              ts t]    ; bottom edge
-     [px              (- (+ py ts) t) ts t]    ; top edge
-     [px              py              t  ts]   ; left edge
-     [(- (+ px ts) t) py              t  ts]])) ; right edge
+  "Four thin edge rects [x y w h] (doubles, world px) framing a `bw` x `bh` box
+   at bottom-left `[px py]`. The 2-arg form frames a single `tile-size` square
+   (the common case); the 3-arg form takes explicit box dims to frame a
+   multi-cell building's footprint. The Y-flip and any glide are applied upstream
+   by sim.render.interp/draw-pos. Order: bottom, top, left, right."
+  ([anchor tile-size] (selection-box-rects anchor tile-size tile-size))
+  ([[px py] bw bh]
+   (let [bw (double bw)
+         bh (double bh)
+         t  box-thickness
+         px (double px)
+         py (double py)]
+     [[px              py              bw t]    ; bottom edge
+      [px              (- (+ py bh) t) bw t]    ; top edge
+      [px              py              t  bh]   ; left edge
+      [(- (+ px bw) t) py              t  bh]]))) ; right edge
 
 (defn draw
   "Draw the box around the selected entity. No-op when nothing is selected, the
@@ -48,9 +52,15 @@
   (when-let [sel (ui/selected)]
     (when-let [ent (entity/entity world sel)]
       (when (:pos ent)
-        (let [height (:height (:grid world))]
+        (let [height  (:height (:grid world))
+              ts      (double tile-size)
+              [px py] (interp/draw-pos ent tile-size height)
+              ;; only buildings carry a footprint; everything else is a 1x1 tile.
+              [w h]   (if (= :building (:kind ent)) (:size ent [1 1]) [1 1])
+              ;; grid +y is DOWN in world px (the height-1-y flip), so a footprint
+              ;; taller than 1 drops its box bottom (h-1) tiles below the origin.
+              by      (- (double py) (* (dec (long h)) ts))]
           (.setColor batch box-color)
-          (doseq [[x y w h] (selection-box-rects
-                             (interp/draw-pos ent tile-size height) tile-size)]
-            (.draw batch pixel (float x) (float y) (float w) (float h)))
+          (doseq [[x y rw rh] (selection-box-rects [px by] (* (long w) ts) (* (long h) ts))]
+            (.draw batch pixel (float x) (float y) (float rw) (float rh)))
           (.setColor batch Color/WHITE))))))

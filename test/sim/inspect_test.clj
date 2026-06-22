@@ -60,6 +60,17 @@
       (is (= [1 2] (map :id (inspect/selectable-at w [1 1]))))
       (is (= []    (inspect/selectable-at w [0 0])) "bare tile -> empty"))))
 
+(deftest building-is-selectable-from-any-footprint-cell
+  (testing "a multi-cell building is selectable from every cell it covers, and
+            labelled by its def"
+    (let [wall {:id 5 :kind :building :def :wall :pos [1 1] :size [3 1]}
+          w    (world-with [] [wall])]
+      (is (= [5] (map :id (inspect/selectable-at w [1 1]))) "origin cell")
+      (is (= [5] (map :id (inspect/selectable-at w [3 1]))) "far footprint cell")
+      (is (= []  (inspect/selectable-at w [4 1])) "just past the footprint")
+      (is (= ["Grass 100%" "Wall"] (inspect/describe-tile w [2 1]))
+          "shows as a labelled line on a covered tile"))))
+
 (deftest long-labels-truncate-with-ellipsis
   (testing "a label past max-line-len is cut to exactly max-line-len ending in ..."
     (let [pawn {:id 1 :kind :pawn :name (apply str (repeat 50 \X)) :pos [0 0]}

@@ -34,14 +34,18 @@
         ts     (long tile-size)]
     (doseq [b (entity/buildings world)]
       (when-let [[tx ty] (:pos b)]
-        (let [[px py] (tile-anchor tx ty height ts)]
-          (if (:portal? b)
-            ;; door: draw the closed slab (1 - open-fraction), retracting along the
-            ;; wall axis with the orientation's facing; fully open -> nothing.
-            (let [[facing axis] (if (= :vertical (door/orientation world [tx ty]))
-                                  [:left :y]      ; vertical wall: strip, slides on Y
-                                  [:down :x])]    ; horizontal wall: face-on, slides on X
-              (sprites/draw-graphic-clipped! batch (:graphic b) px py ts
-                                             (- 1.0 (door/open-fraction b))
-                                             axis facing now-ms))
-            (sprites/draw-graphic! batch (:graphic b) [px py] ts now-ms)))))))
+        (if (:portal? b)
+          ;; door (single-cell today): draw the closed slab (1 - open-fraction),
+          ;; retracting along the wall axis with the orientation's facing; fully
+          ;; open -> nothing. (Multi-cell doors generalize this in increment 3.)
+          (let [[px py]       (tile-anchor tx ty height ts)
+                [facing axis] (if (= :vertical (door/orientation world [tx ty]))
+                                [:left :y]      ; vertical wall: strip, slides on Y
+                                [:down :x])]    ; horizontal wall: face-on, slides on X
+            (sprites/draw-graphic-clipped! batch (:graphic b) px py ts
+                                           (- 1.0 (door/open-fraction b))
+                                           axis facing now-ms))
+          ;; wall/structure: tile the sprite across every footprint cell, so a
+          ;; multi-cell building fills all of its tiles.
+          (doseq [[cx cy] (entity/footprint b)]
+            (sprites/draw-graphic! batch (:graphic b) (tile-anchor cx cy height ts) ts now-ms)))))))

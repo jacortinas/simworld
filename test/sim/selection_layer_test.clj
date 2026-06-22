@@ -20,6 +20,17 @@
               [(- 96.0 t)    96.0          t    32.0]]
              rects)))))
 
+(deftest box-frames-a-multicell-footprint
+  (testing "the 3-arg form frames an explicit w x h box (a building footprint)"
+    (let [t     selection/box-thickness
+          ;; a 2-wide, 3-tall footprint box at bottom-left [10 20]: 64 x 96 px
+          rects (selection/selection-box-rects [10.0 20.0] 64 96)]
+      (is (= [[10.0       20.0        64.0 t]
+              [10.0       (- 116.0 t) 64.0 t]
+              [10.0       20.0        t    96.0]
+              [(- 74.0 t) 20.0        t    96.0]]
+             rects)))))
+
 (deftest box-thickness-is-positive
   (testing "box-thickness is a usable positive line width"
     (is (pos? selection/box-thickness))))
