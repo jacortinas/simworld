@@ -126,9 +126,10 @@
 ;; ---------------------------------------------------------------------------
 
 (defn- door-at
-  "The door entity at cell [x y], or nil."
-  [world [x y]]
-  (first (filter (fn [d] (= [x y] (:pos d))) (doors world))))
+  "The door entity whose footprint covers cell [x y], or nil. Footprint-aware so
+   a multi-cell door is found from any of its cells."
+  [world cell]
+  (first (filter #(entity/building-covers? % cell) (doors world))))
 
 (defn blocking?
   "Is a NOT-yet-open door standing in cell [x y]? A pawn must wait rather than

@@ -27,9 +27,12 @@
 (defn build
   "Per-cell cost double-array for `grid`, INFINITY at each blocking building,
    plus a parallel :portals boolean-array marking each passable :portal? (door)
-   building's cell. `buildings` is a seq of building entities: one with
-   :blocks-path? stamps INFINITY at its cell; one with :portal? (and not
-   blocking) flags its cell a portal while leaving the terrain cost intact. Pure."
+   building's cell. `buildings` is a seq of building entities: a :blocks-path?
+   one stamps INFINITY, a :portal? (non-blocking) one flags a portal, while
+   leaving the terrain cost intact. A building stamps EVERY cell of its footprint
+   (its :size [w h] rect anchored at :pos, default [1 1]), so a multi-cell wall
+   blocks all its cells and a multi-cell door is a portal across all of them.
+   Pure (footprint computed inline from :pos + :size; no sim.entity dependency)."
   [{:keys [width height tiles]} buildings]
   (let [width   (long width)
         height  (long height)
@@ -42,14 +45,18 @@
                         (tile/move-cost t)            ; already ^double
                         Double/POSITIVE_INFINITY))))
     (doseq [b buildings]
-      (let [[x y] (:pos b)]
-        (when (and x y (tile/in-bounds? width height x y))
-          (let [i (tile/idx width x y)]
-            ;; blocking wins over portal (a cell is never both in practice): a
-            ;; blocker stamps INFINITY, a non-blocking portal flags the cell.
-            (cond
-              (:blocks-path? b) (aset costs i Double/POSITIVE_INFINITY)
-              (:portal? b)      (aset portals i true))))))
+      (let [[ox oy] (:pos b)
+            [w h]   (:size b [1 1])]
+        (when (and ox oy)
+          (dotimes [dy h]
+            (dotimes [dx w]
+              (let [x (+ (long ox) (long dx)) y (+ (long oy) (long dy))]
+                (when (tile/in-bounds? width height x y)
+                  (let [i (tile/idx width x y)]
+                    ;; blocking wins over portal (a cell is never both in practice).
+                    (cond
+                      (:blocks-path? b) (aset costs i Double/POSITIVE_INFINITY)
+                      (:portal? b)      (aset portals i true))))))))))
     {:width width :height height :costs costs :portals portals}))
 
 (defn cost

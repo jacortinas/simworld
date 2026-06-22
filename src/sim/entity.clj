@@ -150,6 +150,40 @@
   [world]
   (keep #(entity world %) (get-in world [:kinds :building])))
 
+;; ---------------------------------------------------------------------------
+;; Building footprints. A building occupies its :size [w h] rectangle anchored at
+;; :pos (the minimum corner), extending +x/+y. :size defaults to [1 1], so an
+;; ordinary single-tile building (a wall, today's door) behaves exactly as
+;; before. Multi-cell support concentrates here + in sim.pathgrid (which stamps
+;; every footprint cell); regions/rooms ride the PathGrid and need no change.
+;; ---------------------------------------------------------------------------
+
+(defn footprint
+  "The cells a building occupies (its :size [w h] rect from :pos), as a seq of
+   [x y]. Pure."
+  [building]
+  (let [[ox oy] (:pos building)
+        [w h]   (:size building [1 1])
+        ox (long ox) oy (long oy)]
+    (for [dy (range h) dx (range w)]
+      [(+ ox (long dx)) (+ oy (long dy))])))
+
+(defn building-covers?
+  "True iff `building`'s footprint includes cell [x y]. O(1) rectangle test (no
+   footprint seq allocation)."
+  [building [x y]]
+  (let [[ox oy] (:pos building)
+        [w h]   (:size building [1 1])
+        x (long x) y (long y) ox (long ox) oy (long oy)]
+    (and (<= ox x (+ ox (long w) -1))
+         (<= oy y (+ oy (long h) -1)))))
+
+(defn building-at
+  "First building whose footprint covers [x y], or nil. Footprint-aware: a
+   multi-cell building is found from ANY of its cells, not just its origin."
+  [world [x y]]
+  (first (filter #(building-covers? % [x y]) (buildings world))))
+
 (defn items-at
   "Sequence of all items currently at [x y]."
   [world pos]

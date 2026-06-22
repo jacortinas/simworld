@@ -37,6 +37,23 @@
   (let [pg (pathgrid/build (tile/make-grid 3 3) [])]
     (is (not (pathgrid/portal? pg 1 1)) "no buildings -> no portal cells")))
 
+(deftest multicell-building-blocks-its-whole-footprint
+  (let [b  {:kind :building :blocks-path? true :pos [1 1] :size [2 1]}
+        pg (pathgrid/build (tile/make-grid 4 4) [b])]
+    (is (not (pathgrid/passable? pg 1 1)) "origin blocked")
+    (is (not (pathgrid/passable? pg 2 1)) "second footprint cell blocked")
+    (is (pathgrid/passable? pg 3 1) "cell past the footprint stays open")
+    (is (pathgrid/passable? pg 1 2) "cell below the footprint stays open")))
+
+(deftest multicell-door-portals-its-whole-footprint
+  (let [d  {:kind :building :blocks-path? false :portal? true :pos [1 1] :size [2 1]}
+        pg (pathgrid/build (tile/make-grid 4 4) [d])]
+    (is (pathgrid/passable? pg 1 1) "door cells stay passable")
+    (is (pathgrid/passable? pg 2 1))
+    (is (pathgrid/portal? pg 1 1) "both footprint cells are portals")
+    (is (pathgrid/portal? pg 2 1))
+    (is (not (pathgrid/portal? pg 3 1)) "past the footprint is not a portal")))
+
 (deftest oob-cost-is-infinite
   (let [pg (pathgrid/build (tile/make-grid 3 3) [])]
     (is (Double/isInfinite (pathgrid/cost pg -1 0)))

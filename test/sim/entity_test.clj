@@ -3,7 +3,8 @@
    [clojure.test :refer [deftest is testing use-fixtures]]
    [sim.defs     :as defs]
    [sim.entity   :as entity]
-   [sim.schedule :as schedule]))
+   [sim.schedule :as schedule]
+   [sim.tile     :as tile]))
 
 ;; make-* now reads thing-defs from the shared global registry; reload the
 ;; bundled defs before each test so a sibling ns swapping in alternate sources
@@ -16,6 +17,31 @@
       (is (= :tree (:kind t)))
       (is (= [4 5] (:pos t)))
       (is (some? (:id t))))))
+
+(deftest footprint-default-is-a-single-cell
+  (let [b {:kind :building :pos [3 4]}]
+    (is (= [[3 4]] (entity/footprint b)) "no :size -> just the :pos cell")
+    (is (entity/building-covers? b [3 4]))
+    (is (not (entity/building-covers? b [4 4])))))
+
+(deftest footprint-spans-the-size-rect
+  (let [b {:kind :building :pos [2 1] :size [2 3]}]      ; 2 wide, 3 tall
+    (is (= #{[2 1] [3 1] [2 2] [3 2] [2 3] [3 3]} (set (entity/footprint b))))
+    (testing "covers? spans the rect and stops at its edges"
+      (is (entity/building-covers? b [2 1]) "origin")
+      (is (entity/building-covers? b [3 3]) "far corner")
+      (is (not (entity/building-covers? b [4 1])) "past the width")
+      (is (not (entity/building-covers? b [2 4])) "past the height")
+      (is (not (entity/building-covers? b [1 1])) "before the origin"))))
+
+(deftest building-at-finds-a-multicell-building-from-any-cell
+  (let [w (-> {:grid (tile/make-grid 6 6) :entities {} :kinds (entity/empty-kinds)}
+              (entity/add-entity (assoc (entity/make-building [1 1]) :size [3 1])))]
+    (is (some? (entity/building-at w [1 1])) "found from the origin")
+    (is (some? (entity/building-at w [3 1])) "found from the far footprint cell")
+    (is (= (:id (entity/building-at w [1 1])) (:id (entity/building-at w [3 1])))
+        "same building from both cells")
+    (is (nil? (entity/building-at w [4 1])) "nothing just past the footprint")))
 
 (deftest trees-query-filters-by-kind
   (testing "trees returns only :tree entities"

@@ -29,11 +29,11 @@
        first))
 
 (defn building-at
-  "First building entity on tile [tx ty], or nil."
+  "First building entity whose footprint covers tile [tx ty], or nil.
+   Footprint-aware via entity/building-at, so a multi-cell building is found
+   (and so deconstructed) from any of its cells."
   [w tx ty]
-  (->> (entity/buildings w)
-       (filter #(= [tx ty] (:pos %)))
-       first))
+  (entity/building-at w [tx ty]))
 
 (defn can-build?
   "True if a building may be placed at [x y]: in-bounds, terrain passable, no

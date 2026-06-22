@@ -232,6 +232,23 @@
                     (str "reachable? must match find-path for " label))))))))))
 
 ;; ---------------------------------------------------------------------------
+;; MULTI-CELL BUILDINGS: a building stamps its whole :size footprint into the
+;; PathGrid, so regions (which read the PathGrid) see all of it with no change.
+;; A 1x3 wall must seal a 3-tall corridor; if only the origin cell were stamped,
+;; the other two rows would leak and reachable? would wrongly be true.
+;; ---------------------------------------------------------------------------
+
+(deftest a-multicell-wall-blocks-its-whole-span
+  (testing "a 1x3 wall disconnects left from right across a 3-tall corridor"
+    (reset! @#'regions/cache nil)
+    (let [w (-> {:grid (tile/make-grid 5 3) :entities {} :kinds (entity/empty-kinds)}
+                (entity/add-entity (assoc (entity/make-building [2 0]) :size [1 3])))]
+      (is (not (regions/reachable? w [0 1] [4 1]))
+          "the full-height wall column severs the corridor")
+      (is (regions/reachable? w [0 0] [0 2])
+          "and the left side stays internally connected"))))
+
+;; ---------------------------------------------------------------------------
 ;; CHUNKED MODEL: a region is bounded to a 12x12 chunk, so a fully-open map
 ;; larger than one chunk has MULTIPLE region nodes but ONE component. count-regions
 ;; counts NODES; reachable? compares COMPONENTS.
