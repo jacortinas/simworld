@@ -29,16 +29,32 @@
 
 (def ^:private build-modes #{:build :build-door})
 
+(defn- footprint-cells
+  "Cells of the [w h] rect anchored at origin [ox oy]."
+  [[ox oy] [w h]]
+  (for [dy (range h) dx (range w)] [(+ (long ox) (long dx)) (+ (long oy) (long dy))]))
+
 (defn draw
-  "Draw a single-cell tinted quad at the hovered tile when in a build mode. Green
-   when placement is valid, red when not. No-op outside a build mode or when hover
-   is nil. Resets the batch tint to white when done."
+  "Tinted placement preview, green when can-build?, red when not. During a door
+   DRAG it previews the spanned gate footprint; otherwise (any build mode, just
+   hovering) it shows the single hovered cell. No-op outside a build mode / with
+   no hover. Resets the batch tint when done."
   [world ^SpriteBatch batch ts ^Texture pixel]
-  (when (build-modes (ui/mode))
-    (when-let [[tx ty] (ui/hover)]
-      (let [height (long (:height (:grid world)))
-            ok?    (command/can-build? world [tx ty])
-            [x y w h] (cell-rect tx ty height ts)]
-        (.setColor batch (if ok? can-place-color no-place-color))
-        (.draw batch pixel (float x) (float y) (float w) (float h))
-        (.setColor batch Color/WHITE)))))
+  (let [height     (long (:height (:grid world)))
+        draw-cells (fn [cells ok?]
+                     (.setColor batch ^Color (if ok? can-place-color no-place-color))
+                     (doseq [[cx cy] cells]
+                       (let [[x y w h] (cell-rect cx cy height ts)]
+                         (.draw batch pixel (float x) (float y) (float w) (float h))))
+                     (.setColor batch Color/WHITE))]
+    (cond
+      ;; door drag in flight: preview the spanned gate, validity over the whole span
+      (and (= :build-door (ui/mode)) (ui/drag))
+      (let [{:keys [start current]} (ui/drag)
+            [origin size] (command/door-span start current)]
+        (draw-cells (footprint-cells origin size) (command/can-build? world origin size)))
+
+      ;; any build mode, just hovering: the single hovered cell
+      (build-modes (ui/mode))
+      (when-let [[tx ty] (ui/hover)]
+        (draw-cells [[tx ty]] (command/can-build? world [tx ty]))))))

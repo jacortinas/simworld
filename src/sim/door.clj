@@ -47,16 +47,11 @@
       (min 1.0 (/ (double (:open door 0)) (double mx)))
       0.0)))
 
-(defn orientation
-  "Which way a door at `cell` faces, read from its flanking walls (a cell is
+(defn- orientation-from-walls
+  "Orientation of a 1x1 door at `cell` from its flanking walls (a cell is
    wall-like when impassable: a building blocker or impassable terrain, NOT
-   another door, which is passable):
-     :horizontal  walls to the E and W -> the door sits in a horizontal wall and
-                  is drawn face-on (you see the door);
-     :vertical    walls to the N and S -> a vertical wall, drawn edge-on as a
-                  thin strip.
-   Defaults to :horizontal when ambiguous (free-standing, or a corner with walls
-   on adjacent rather than opposite sides). Pure read of the world's PathGrid."
+   another door, which is passable): walls E and W -> :horizontal, walls N and S
+   -> :vertical, ambiguous -> :horizontal. Pure read of the world's PathGrid."
   [world [x y]]
   (let [pg    (pathgrid/for-world world)
         wall? (fn [cx cy] (not (pathgrid/passable? pg cx cy)))]
@@ -64,6 +59,20 @@
       (and (wall? (dec x) y) (wall? (inc x) y)) :horizontal
       (and (wall? x (dec y)) (wall? x (inc y))) :vertical
       :else                                     :horizontal)))
+
+(defn orientation
+  "Which way `door` faces (drives the open-retract axis and sprite facing):
+     :horizontal  drawn face-on, slides along X;
+     :vertical    drawn edge-on as a strip, slides along Y.
+   A MULTI-CELL door reads its :size (wider -> :horizontal, taller -> :vertical),
+   which is unambiguous. A 1x1 door has no size to go on, so it reads the flanking
+   walls (orientation-from-walls), defaulting to :horizontal."
+  [world door]
+  (let [[w h] (:size door [1 1])]
+    (cond
+      (> (long w) (long h)) :horizontal
+      (> (long h) (long w)) :vertical
+      :else                 (orientation-from-walls world (:pos door)))))
 
 ;; ---------------------------------------------------------------------------
 ;; WRITE half: the tick system that animates every door toward open/closed.
@@ -109,12 +118,15 @@
   (let [ds (doors world)]
     (if (empty? ds)
       world
-      (let [door-cells (into #{} (map :pos) ds)
+      (let [door-cells (into #{} (mapcat entity/footprint) ds)   ; every cell of every door
             wanted     (wanted-cells world door-cells)]
         (reduce (fn [w door]
+                  ;; a multi-cell door opens as a UNIT: wanted if ANY footprint
+                  ;; cell is wanted (a pawn on it or settled one step from it).
                   (let [open  (long (:open door 0))
                         open' (next-open open (long (:open-ticks door 0))
-                                         (contains? wanted (:pos door)))]
+                                         (boolean (some #(contains? wanted %)
+                                                        (entity/footprint door))))]
                     (if (== open open')
                       w
                       (entity/update-entity w (:id door) assoc :open open'))))

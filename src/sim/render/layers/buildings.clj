@@ -35,16 +35,17 @@
     (doseq [b (entity/buildings world)]
       (when-let [[tx ty] (:pos b)]
         (if (:portal? b)
-          ;; door (single-cell today): draw the closed slab (1 - open-fraction),
-          ;; retracting along the wall axis with the orientation's facing; fully
-          ;; open -> nothing. (Multi-cell doors generalize this in increment 3.)
-          (let [[px py]       (tile-anchor tx ty height ts)
-                [facing axis] (if (= :vertical (door/orientation world [tx ty]))
-                                [:left :y]      ; vertical wall: strip, slides on Y
-                                [:down :x])]    ; horizontal wall: face-on, slides on X
-            (sprites/draw-graphic-clipped! batch (:graphic b) px py ts
-                                           (- 1.0 (door/open-fraction b))
-                                           axis facing now-ms))
+          ;; door: each footprint cell draws the closed slab (1 - open-fraction),
+          ;; retracting along the door's orientation axis with its facing; the
+          ;; whole gate opens in unison (one :open). Fully open -> nothing.
+          (let [[facing axis] (if (= :vertical (door/orientation world b))
+                                [:left :y]      ; vertical: strip, slides on Y
+                                [:down :x])     ; horizontal: face-on, slides on X
+                keep          (- 1.0 (door/open-fraction b))]
+            (doseq [[cx cy] (entity/footprint b)]
+              (let [[px py] (tile-anchor cx cy height ts)]
+                (sprites/draw-graphic-clipped! batch (:graphic b) px py ts
+                                               keep axis facing now-ms))))
           ;; wall/structure: tile the sprite across every footprint cell, so a
           ;; multi-cell building fills all of its tiles.
           (doseq [[cx cy] (entity/footprint b)]

@@ -117,6 +117,31 @@
   (command/deconstruct-building! 3 3)
   (is (zero? (count (entity/buildings @world/world))) "wall removed"))
 
+(deftest door-span-clamps-a-drag-to-a-line
+  (is (= [[2 5] [3 1]] (command/door-span [2 5] [4 5])) "horizontal drag -> n-wide line")
+  (is (= [[2 5] [1 3]] (command/door-span [2 5] [2 7])) "vertical drag -> n-tall line")
+  (is (= [[2 5] [1 1]] (command/door-span [2 5] [2 5])) "a click -> 1x1")
+  (is (= [[1 5] [3 1]] (command/door-span [3 5] [1 5])) "origin is the min corner"))
+
+(deftest can-build-checks-the-whole-footprint
+  (let [w {:grid (tile/set-tile (tile/make-grid 5 5) 3 1 :wall)
+           :entities {} :kinds (entity/empty-kinds)}]
+    (is (command/can-build? w [1 1] [2 1]) "a clear 2-wide span is buildable")
+    (is (not (command/can-build? w [2 1] [2 1])) "a span hitting the wall at [3 1] is not")))
+
+(deftest build-door-span-places-one-sized-door
+  (world/reset-world!)
+  (command/build-door-span! [3 3] [5 3])                 ; 3-wide horizontal gate
+  (let [doors (entity/buildings @world/world)
+        d     (first doors)]
+    (is (= 1 (count doors)) "one door entity spans the whole gate")
+    (is (= [3 3] (:pos d)) "origin at the min corner")
+    (is (= [3 1] (:size d)) "size = the dragged line")
+    (is (= :door (:def d)))
+    (testing "and deconstruct-span removes it from any of its cells"
+      (command/deconstruct-span! [5 3] [5 3])            ; click the far gate cell
+      (is (zero? (count (entity/buildings @world/world)))))))
+
 (deftest build-and-deconstruct-door-mutate-the-world
   (world/reset-world!)
   (command/build-door! 3 3)

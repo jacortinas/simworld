@@ -31,12 +31,14 @@
                   (command/deconstruct-building! tx ty)
                   (command/build-wall! tx ty)))}
 
+   ;; Doors DRAG to span a gate (a click = a 1-cell drag = a 1x1 door); the drag's
+   ;; length becomes the door's footprint. SHIFT+drag erases buildings in the span.
    :build-door
-   {:drag?    false
-    :on-click (fn [tx ty shift?]
-                (if shift?
-                  (command/deconstruct-building! tx ty)
-                  (command/build-door! tx ty)))}
+   {:drag?     true
+    :on-commit (fn [start current erase?]
+                 (if erase?
+                   (command/deconstruct-span! start current)
+                   (command/build-door-span! start current)))}
 
    :zone-stockpile
    {:drag?     true

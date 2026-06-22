@@ -37,21 +37,27 @@
     (is (= 1.0 (door/open-fraction (assoc d :open 20))) "fully open -> 1.0")
     (is (= 1.0 (door/open-fraction (assoc d :open 25))) "clamps at 1.0")))
 
-(deftest orientation-follows-the-flanking-walls
+(deftest orientation-of-a-1x1-door-follows-the-flanking-walls
   (testing "walls E+W of the door -> horizontal (drawn face-on)"
     (let [g (-> (tile/make-grid 5 3) (tile/set-tile 1 1 :wall) (tile/set-tile 3 1 :wall))
           w (-> {:grid g :entities {} :kinds (entity/empty-kinds)}
                 (entity/add-entity (entity/make-door [2 1])))]
-      (is (= :horizontal (door/orientation w [2 1])))))
+      (is (= :horizontal (door/orientation w (first (door/doors w)))))))
   (testing "walls N+S of the door -> vertical (drawn as a strip)"
     (let [g (-> (tile/make-grid 5 3) (tile/set-tile 2 0 :wall) (tile/set-tile 2 2 :wall))
           w (-> {:grid g :entities {} :kinds (entity/empty-kinds)}
                 (entity/add-entity (entity/make-door [2 1])))]
-      (is (= :vertical (door/orientation w [2 1])))))
-  (testing "a free-standing door defaults to horizontal"
+      (is (= :vertical (door/orientation w (first (door/doors w)))))))
+  (testing "a free-standing 1x1 door defaults to horizontal"
     (let [w (-> {:grid (tile/make-grid 5 3) :entities {} :kinds (entity/empty-kinds)}
                 (entity/add-entity (entity/make-door [2 1])))]
-      (is (= :horizontal (door/orientation w [2 1]))))))
+      (is (= :horizontal (door/orientation w (first (door/doors w))))))))
+
+(deftest orientation-of-a-multicell-door-follows-its-size
+  (testing "a multi-cell door reads its :size, no wall check needed"
+    (let [w {:grid (tile/make-grid 6 6) :entities {} :kinds (entity/empty-kinds)}]
+      (is (= :horizontal (door/orientation w {:kind :building :portal? true :pos [1 1] :size [3 1]})))
+      (is (= :vertical   (door/orientation w {:kind :building :portal? true :pos [1 1] :size [1 3]}))))))
 
 (deftest door-system-opens-a-wanted-door-one-tick-at-a-time
   (testing "a pawn settled one cell away with the door as its next path cell
@@ -78,6 +84,19 @@
       (is (= 3 (:open (entity/entity (tick-doors-n w 2) did))) "5 -> 3 after 2 ticks")
       (is (= 0 (:open (entity/entity (tick-doors-n w 5) did))) "fully closed after 5")
       (is (= 0 (:open (entity/entity (tick-doors-n w 9) did))) "clamped at 0"))))
+
+(deftest door-system-opens-a-multicell-gate-from-any-footprint-cell
+  (testing "a 2-wide gate opens as a UNIT when a pawn waits to enter EITHER cell"
+    (let [open-from
+          (fn [pawn-pos next-cell]
+            (let [pawn (-> (entity/make-pawn "p" pawn-pos)
+                           (assoc :job {:path [pawn-pos next-cell] :path-index 0 :move nil}))
+                  w    (-> (bare-world)
+                           (entity/add-entity (assoc (entity/make-door [2 1]) :size [2 1]))
+                           (entity/add-entity pawn))]
+              (:open (entity/entity (tick-doors-n w 20) (door-id w)))))]
+      (is (= 20 (open-from [1 1] [2 1])) "pawn entering the LEFT gate cell opens it")
+      (is (= 20 (open-from [4 1] [3 1])) "pawn entering the RIGHT gate cell opens the same gate"))))
 
 (deftest door-system-is-a-noop-without-doors
   (let [w (-> (bare-world) (entity/add-entity (entity/make-pawn "p" [1 1])))]
@@ -132,6 +151,20 @@
       (is (some? ot) "the control pawn crosses the open gap")
       (is (<= 18 (- dt ot) 24)
           (str "the door added its ~20-tick open time (doored " dt " vs open " ot ")")))))
+
+(deftest pawn-crosses-a-multicell-gate
+  (testing "a pawn waits for a 2-wide gate to open, then walks through both cells"
+    (let [w0   (world/initial-world {:width 6 :height 3})
+          grid (reduce (fn [g x] (-> g (tile/set-tile x 0 :wall) (tile/set-tile x 2 :wall)))
+                       (:grid w0) (range 6))
+          base (assoc w0 :grid grid)
+          door (assoc (entity/make-door [2 1]) :size [2 1])      ; gate over [2 1]+[3 1]
+          pawn (entity/make-pawn "p" [0 1])
+          w    (-> base (entity/add-entity door) (entity/add-entity pawn))
+          pid  (:id pawn)
+          w    (job/assign w pid (job/go-to [5 1]) job/forced-by-player)]
+      (is (some? (ticks-to-reach w pid [5 1] 300))
+          "the pawn opens and crosses the multi-cell gate to the far side"))))
 
 (deftest a-door-on-the-path-is-still-reachable-and-passable
   (testing "the door is passable for planning; only the wait is at move time"

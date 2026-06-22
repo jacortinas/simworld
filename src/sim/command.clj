@@ -36,16 +36,34 @@
   (entity/building-at w [tx ty]))
 
 (defn can-build?
-  "True if a building may be placed at [x y]: in-bounds, terrain passable, no
-   pawn on the cell, and no existing building there. The rule is independent of
-   WHAT is placed (walls and doors share it), so it is the single predicate the
-   build cursor and every build-* command read. Pure."
-  [world [x y]]
-  (let [grid (:grid world)]
-    (and (in-bounds? grid x y)
-         (tile/passable? (tile/tile-at grid x y))
-         (nil? (pawn-at world x y))
-         (nil? (building-at world x y)))))
+  "True if a building of footprint `size` ([w h], default [1 1]) anchored at
+   origin [ox oy] may be placed: EVERY footprint cell is in-bounds, on passable
+   terrain, free of pawns, and free of existing buildings. The rule is
+   independent of WHAT is placed (walls and doors share it), so it is the single
+   predicate the build cursor and every build-* command read. Pure."
+  ([world origin] (can-build? world origin [1 1]))
+  ([world [ox oy] [w h]]
+   (let [grid (:grid world)
+         ox (long ox) oy (long oy)]
+     (every? (fn [[x y]]
+               (and (in-bounds? grid x y)
+                    (tile/passable? (tile/tile-at grid x y))
+                    (nil? (pawn-at world x y))
+                    (nil? (building-at world x y))))
+             (for [dy (range h) dx (range w)] [(+ ox (long dx)) (+ oy (long dy))])))))
+
+(defn door-span
+  "Clamp a drag from `start` to `current` to a 1-wide LINE (a gate fills a wall
+   gap, which is a line), returning [origin [w h]]: the dominant axis sets the
+   length, the other stays 1; origin is the min corner. A zero-length drag (a
+   click) yields a single [1 1] cell. Pure."
+  [[sx sy] [cx cy]]
+  (let [sx (long sx) sy (long sy) cx (long cx) cy (long cy)
+        dx (Math/abs (- cx sx))
+        dy (Math/abs (- cy sy))]
+    (if (>= dx dy)
+      [[(min sx cx) sy] [(inc dx) 1]]      ; horizontal line at row sy
+      [[sx (min sy cy)] [1 (inc dy)]])))   ; vertical line at column sx
 
 (defn left-click!
   "RimWorld left-click: cycle the selection through the selectable entities on
@@ -115,11 +133,42 @@
   (place-building! tx ty entity/make-building))
 
 (defn build-door!
-  "Place one door building at tile [tx ty], if can-build?. A door is a passable
-   portal building (see sim.entity/make-door); placement validity is identical
-   to a wall's."
+  "Place one 1x1 door building at tile [tx ty], if can-build?. A door is a
+   passable portal building (see sim.entity/make-door)."
   [tx ty]
   (place-building! tx ty entity/make-door))
+
+(defn build-door-span!
+  "Place ONE door spanning the dragged line (start..current, clamped to a line by
+   door-span), if its whole footprint is buildable. The drag's length becomes the
+   door's :size, so this is how a multi-cell gate is placed; a click (zero-length
+   drag) places a 1x1 door."
+  [start current]
+  (let [[origin size] (door-span start current)]
+    (swap! world/world
+           (fn [w]
+             (if (can-build? w origin size)
+               (entity/add-entity w (assoc (entity/make-door origin) :size size))
+               w))))
+  nil)
+
+(defn deconstruct-span!
+  "Remove every building intersecting the dragged line (start..current). The
+   shift-drag erase twin of build-door-span!; building-at is footprint-aware, so
+   a multi-cell building is removed from any cell the line touches."
+  [start current]
+  (let [[[ox oy] [w h]] (door-span start current)
+        ox (long ox) oy (long oy)
+        cells (for [dy (range h) dx (range w)] [(+ ox (long dx)) (+ oy (long dy))])]
+    (swap! world/world
+           (fn [wd]
+             (reduce (fn [wd' [x y]]
+                       (if-let [b (building-at wd' x y)]
+                         (entity/remove-entity wd' (:id b))
+                         wd'))
+                     wd
+                     cells))))
+  nil)
 
 (defn deconstruct-building!
   "Remove the building at tile [tx ty], if any (wall or door alike). Terrain is
