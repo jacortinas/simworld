@@ -30,6 +30,29 @@
     (is (not (door/open? d)) "and not passable without waiting")
     (is (= 20 (:open-ticks d)) "carrying the def's open time")))
 
+(deftest open-fraction-spans-closed-to-fully-open
+  (let [d (entity/make-door [2 1])]               ; :open-ticks 20
+    (is (= 0.0 (door/open-fraction d)) "closed -> 0.0")
+    (is (= 0.5 (door/open-fraction (assoc d :open 10))) "halfway -> 0.5")
+    (is (= 1.0 (door/open-fraction (assoc d :open 20))) "fully open -> 1.0")
+    (is (= 1.0 (door/open-fraction (assoc d :open 25))) "clamps at 1.0")))
+
+(deftest orientation-follows-the-flanking-walls
+  (testing "walls E+W of the door -> horizontal (drawn face-on)"
+    (let [g (-> (tile/make-grid 5 3) (tile/set-tile 1 1 :wall) (tile/set-tile 3 1 :wall))
+          w (-> {:grid g :entities {} :kinds (entity/empty-kinds)}
+                (entity/add-entity (entity/make-door [2 1])))]
+      (is (= :horizontal (door/orientation w [2 1])))))
+  (testing "walls N+S of the door -> vertical (drawn as a strip)"
+    (let [g (-> (tile/make-grid 5 3) (tile/set-tile 2 0 :wall) (tile/set-tile 2 2 :wall))
+          w (-> {:grid g :entities {} :kinds (entity/empty-kinds)}
+                (entity/add-entity (entity/make-door [2 1])))]
+      (is (= :vertical (door/orientation w [2 1])))))
+  (testing "a free-standing door defaults to horizontal"
+    (let [w (-> {:grid (tile/make-grid 5 3) :entities {} :kinds (entity/empty-kinds)}
+                (entity/add-entity (entity/make-door [2 1])))]
+      (is (= :horizontal (door/orientation w [2 1]))))))
+
 (deftest door-system-opens-a-wanted-door-one-tick-at-a-time
   (testing "a pawn settled one cell away with the door as its next path cell
             (i.e. waiting to enter) makes the door swing open over :open-ticks"

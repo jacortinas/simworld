@@ -36,6 +36,35 @@
   [door]
   (>= (long (:open door 0)) (long (:open-ticks door 0))))
 
+(defn open-fraction
+  "How far open this door is, in [0.0, 1.0]: :open / :open-ticks (0.0 closed,
+   1.0 fully open). The render reads this to draw the door retracting; the sim
+   gate (blocking?/open?) only cares about fully open, but the view wants the
+   in-between."
+  ^double [door]
+  (let [mx (long (:open-ticks door 0))]
+    (if (pos? mx)
+      (min 1.0 (/ (double (:open door 0)) (double mx)))
+      0.0)))
+
+(defn orientation
+  "Which way a door at `cell` faces, read from its flanking walls (a cell is
+   wall-like when impassable: a building blocker or impassable terrain, NOT
+   another door, which is passable):
+     :horizontal  walls to the E and W -> the door sits in a horizontal wall and
+                  is drawn face-on (you see the door);
+     :vertical    walls to the N and S -> a vertical wall, drawn edge-on as a
+                  thin strip.
+   Defaults to :horizontal when ambiguous (free-standing, or a corner with walls
+   on adjacent rather than opposite sides). Pure read of the world's PathGrid."
+  [world [x y]]
+  (let [pg    (pathgrid/for-world world)
+        wall? (fn [cx cy] (not (pathgrid/passable? pg cx cy)))]
+    (cond
+      (and (wall? (dec x) y) (wall? (inc x) y)) :horizontal
+      (and (wall? x (dec y)) (wall? x (inc y))) :vertical
+      :else                                     :horizontal)))
+
 ;; ---------------------------------------------------------------------------
 ;; WRITE half: the tick system that animates every door toward open/closed.
 ;; ---------------------------------------------------------------------------

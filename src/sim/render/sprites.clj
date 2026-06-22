@@ -168,3 +168,29 @@
          (.setColor batch Color/WHITE)
          (.draw batch region (float gx) (float gy) (float gw) (float gh)))))))
 
+(defn draw-graphic-clipped!
+  "Draw `keep` fraction (0..1) of `graphic-id` at world-pixel anchor [px py],
+   retracting along `axis`: :x narrows the width (a horizontal door sliding into
+   the wall, revealing the floor beside it), :y narrows the height (a vertical
+   door). Used for a door retracting open with keep = 1 - open-fraction and axis =
+   the wall axis (sim.door/orientation). The region is CLIPPED (a copy with a
+   reduced dimension), not squished, so the art keeps its proportions; `facing`
+   selects an orientation-specific sprite once the graphic has :facings (ignored
+   by a plain single-image graphic today). No-op when keep <= 0 or the graphic
+   can't resolve. GL side of the door-open visual; the keep math and the axis
+   choice live in sim.door (open-fraction / orientation)."
+  [^SpriteBatch batch graphic-id px py tile-size keep axis facing now-ms]
+  (when (pos? (double keep))
+    (when-let [gr (defs/graphic graphic-id)]
+      (when-let [^TextureRegion base (graphic-region gr facing now-ms)]
+        (let [k  (double keep)
+              ts (double tile-size)]
+          (.setColor batch Color/WHITE)
+          (if (= axis :y)
+            (let [clip (doto (TextureRegion. base)       ; copy, never mutate the cached base
+                         (.setRegionHeight (int (Math/round (* (double (.getRegionHeight base)) k)))))]
+              (.draw batch clip (float px) (float py) (float ts) (float (* ts k))))
+            (let [clip (doto (TextureRegion. base)
+                         (.setRegionWidth (int (Math/round (* (double (.getRegionWidth base)) k)))))]
+              (.draw batch clip (float px) (float py) (float (* ts k)) (float ts)))))))))
+
