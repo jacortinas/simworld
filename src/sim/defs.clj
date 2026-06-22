@@ -51,8 +51,9 @@
 (s/def ::skills       (s/map-of keyword? number?))
 (s/def ::blocks-path? boolean?)
 (s/def ::portal?      boolean?)                ; door: passable, but its own region (rooms boundary)
+(s/def ::open-ticks   (s/and number? pos?))    ; door: ticks to swing fully open
 (s/def ::thing-entry (s/keys :req-un [::kind ::ticker-type]
-                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic ::blocks-path? ::portal?]))
+                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic ::blocks-path? ::portal? ::open-ticks]))
 
 ;; --- graphic defs: sprite selection as content (the render-side axis) ---
 (s/def ::cell        (s/tuple keyword? nat-int? nat-int?))   ; [sheet col row]

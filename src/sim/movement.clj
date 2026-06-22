@@ -19,6 +19,7 @@
    :failed. Progress lives in (:job pawn): :path / :path-index, plus a :move
    record {:from :to :elapsed :cost} for the segment in flight."
   (:require
+   [sim.door        :as door]
    [sim.entity      :as entity]
    [sim.pathfinding :as pathfinding]
    [sim.pathgrid    :as pathgrid]))
@@ -68,13 +69,27 @@
     (pathgrid/passable? (pathgrid/for-world world) nx ny)))
 
 (defn- step-or-replan
-  "Start gliding into path cell `next-i`, unless it is now blocked (a wall
-   appeared), in which case nil the path so walk-toward's (nil? path) branch
-   replans for free."
+  "Begin gliding into path cell `next-i`. Three outcomes:
+   - a WALL now blocks the cell: nil the path so walk-toward's (nil? path) branch
+     replans for free (a runtime wall on the route);
+   - a not-yet-open DOOR holds the cell: STALL (return the world unchanged). The
+     pawn stays settled one cell away and re-polls next tick; sim.door's system,
+     seeing this pawn waiting, swings the door open. Determinism is preserved: the
+     wait is exactly the door's :open-ticks, all in integer ticks;
+   - otherwise start the glide.
+   Order matters: a door is PASSABLE in the PathGrid, so the wall check never
+   fires on it; the door gate is the second cond."
   [world pawn next-i]
-  (if (next-cell-passable? world pawn next-i)
-    [:walking (start-segment world pawn next-i)]
-    [:walking (set-job world (:id pawn) assoc :path nil :path-index 0 :move nil)]))
+  (let [cell ((get-in pawn [:job :path]) next-i)]
+    (cond
+      (not (next-cell-passable? world pawn next-i))
+      [:walking (set-job world (:id pawn) assoc :path nil :path-index 0 :move nil)]
+
+      (door/blocking? world cell)
+      [:walking world]
+
+      :else
+      [:walking (start-segment world pawn next-i)])))
 
 (defn walk-toward
   "Advance the pawn ONE TICK toward `target`, gliding sub-cell. Returns

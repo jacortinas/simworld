@@ -8,6 +8,7 @@
   (:require
    [sim.ai       :as ai]
    [sim.defs     :as defs]
+   [sim.door     :as door]
    [sim.entity   :as entity]
    [sim.events   :as events]
    [sim.schedule :as schedule]))
@@ -93,8 +94,10 @@
 
 ;; ---------------------------------------------------------------------------
 ;; Registration. Idempotent across reloads (register-system! replaces by name).
-;; Order within :normal: events -> decay -> advance-jobs -> redeliberate, so
-;; needs decay before any decision, matching the old step-pawns ordering.
+;; Order within :normal: events -> decay -> advance-jobs -> tick-doors ->
+;; redeliberate, so needs decay before any decision, matching the old step-pawns
+;; ordering. tick-doors runs AFTER advance-jobs so a pawn that stalls at a closed
+;; door THIS tick is seen as waiting THIS tick and the door starts opening at once.
 ;;
 ;; Only :normal systems are registered. No entity type does rare-banded work
 ;; yet, and deterioration (:long) isn't implemented; since run* skips a band
@@ -106,6 +109,7 @@
 (schedule/register-system! :normal ::process-events process-events-system)
 (schedule/register-system! :normal ::decay-needs    decay-needs-system)
 (schedule/register-system! :normal ::advance-jobs   advance-jobs-system)
+(schedule/register-system! :normal ::tick-doors     door/tick-doors-system)
 (schedule/register-system! :normal ::redeliberate   redeliberate-idle-system)
 
 ;; ---------------------------------------------------------------------------
