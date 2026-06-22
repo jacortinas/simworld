@@ -29,6 +29,7 @@
          :debug?          false
          :debug-regions?  false
          :debug-pathgrid? false
+         :debug-rooms?    false
          :mode            :select   ; :select | :zone-stockpile | :build | :build-door
          :drag            nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
 
@@ -87,6 +88,16 @@
   "Flip the pathgrid debug overlay on/off. Returns the NEW boolean."
   []
   (:debug-pathgrid? (swap! ui-state update :debug-pathgrid? not)))
+
+(defn debug-rooms?
+  "Is the rooms debug overlay currently shown?"
+  []
+  (:debug-rooms? @ui-state))
+
+(defn toggle-debug-rooms?
+  "Flip the rooms debug overlay on/off. Returns the NEW boolean."
+  []
+  (:debug-rooms? (swap! ui-state update :debug-rooms? not)))
 
 ;; ---------------------------------------------------------------------------
 ;; Interaction mode + in-progress placement drag. Both VIEW state — the mode is

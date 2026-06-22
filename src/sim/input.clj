@@ -120,6 +120,7 @@
               Input$Keys/GRAVE  (do (ui/toggle-debug!) true)   ; backtick ` : debug overlay
               Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
               Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay
+              Input$Keys/F3     (do (ui/toggle-debug-rooms?) true)       ; toggle rooms overlay
               ;; Escape is context-sensitive: back out of the active tool first;
               ;; only with no tool active does it open the pause menu (RimWorld
               ;; backs out of the current tool before the menu).

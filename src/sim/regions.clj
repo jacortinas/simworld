@@ -309,14 +309,35 @@
                (transient {})
                (range n))))))
 
+(defn- portal-region-set
+  "Set of region ids that are PORTAL (door) regions: a 1-cell region whose cell
+   is a portal. Derived by scanning cell->region against the portals array. Ids
+   are coerced to `long` to match build-graph's Long region keys, so the rooms
+   layer can compare them against graph nodes without an Integer/Long mismatch."
+  [^ints cell->region ^booleans portals ^long n]
+  (loop [i 0 acc (transient #{})]
+    (if (< i n)
+      (recur (inc i)
+             (if (aget portals i)
+               (let [r (aget cell->region i)]
+                 (if (>= r 0) (conj! acc (long r)) acc))
+               acc))
+      (persistent! acc))))
+
 (defn- finalize
-  "Assemble an index from a finished cell->region array."
-  [^long width ^long height ^ints cell->region ^doubles costs]
-  (let [graph (build-graph cell->region costs width height)]
+  "Assemble an index from a finished cell->region array. :portal-regions is the
+   set of door-cell region ids, the boundary the rooms layer (sim.rooms) stops
+   its flood at. (width/height are NOT ^long-hinted: this fn takes 5 args, and a
+   primitive arg hint caps a fn at 4, see CLAUDE.md. Rebound inside instead.)"
+  [width height ^ints cell->region ^doubles costs ^booleans portals]
+  (let [width  (long width)
+        height (long height)
+        graph  (build-graph cell->region costs width height)]
     {:width width :height height :chunk-size chunk-size
      :cell->region cell->region
      :regions graph
      :region->component (build-components graph)
+     :portal-regions (portal-region-set cell->region portals (* width height))
      :count (count graph)}))
 
 (defn- index
@@ -327,7 +348,7 @@
         height  (long (:height pg))
         costs   ^doubles (:costs pg)
         portals ^booleans (:portals pg)]
-    (finalize width height (build-cell->region width height costs portals) costs)))
+    (finalize width height (build-cell->region width height costs portals) costs portals)))
 
 (defn- dirty-chunks
   "Set of [cx cy] chunks containing at least one cell whose cost OR portal flag
@@ -394,7 +415,7 @@
             (if (and c (= (:width ci) w) (= (:height ci) h))
               (let [dirty (dirty-chunks (:costs c) costs (:portals c) portals w)
                     c->r  (update-cell->region (:cell->region ci) w h costs portals dirty)]
-                (finalize w h c->r costs))
+                (finalize w h c->r costs portals))
               (index pg))]
         (reset! cache {:pathgrid pg :costs costs :portals portals :index new-index})
         new-index))))
@@ -421,6 +442,12 @@
    number of connected components; on a map <= one chunk the two coincide."
   ^long [index]
   (:count index))
+
+(defn portal-region?
+  "True iff region node `rid` is a PORTAL (door) region (a 1-cell region the
+   rooms flood stops at). False for normal regions and for -1 (impassable/oob)."
+  [index rid]
+  (contains? (:portal-regions index) (long rid)))
 
 (defn reachable?
   "True iff a and b are both passable AND in the same connected COMPONENT of

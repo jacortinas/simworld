@@ -1,8 +1,8 @@
 (ns sim.screens.play
   "The :play screen. Draws the world (terrain -> zones -> flora -> items ->
    buildings -> pawns -> selection box -> debug overlay -> debug-regions ->
-   debug-pathgrid -> build-cursor) under the world cam, then the HUD + hover
-   inspect panel under the UI cam.
+   debug-pathgrid -> debug-rooms -> build-cursor) under the world cam, then the
+   HUD + hover inspect panel under the UI cam.
    This is the body that USED to live in sim.render.gdx/render.
 
    make-processor wraps sim.input/make-processor with one extra injected
@@ -26,6 +26,7 @@
    [sim.render.layers.debug             :as debug-layer]
    [sim.render.layers.debug-regions     :as debug-regions-layer]
    [sim.render.layers.debug-pathgrid    :as debug-pathgrid-layer]
+   [sim.render.layers.debug-rooms       :as debug-rooms-layer]
    [sim.render.layers.build-cursor      :as build-cursor-layer])
   (:import
    (com.badlogic.gdx.graphics Color OrthographicCamera Texture)
@@ -79,6 +80,8 @@
     ;; the build cursor (which must be on top of everything).
     (debug-regions-layer/draw world batch tile-size pixel)
     (debug-pathgrid-layer/draw world batch tile-size pixel)
+    ;; Rooms overlay (F3): per-room tint, enclosed rooms brighter than outdoors.
+    (debug-rooms-layer/draw world batch tile-size pixel)
     ;; Build cursor: single-cell indicator on top of all world layers so the
     ;; placement preview is never obscured.
     (build-cursor-layer/draw world batch tile-size pixel)
