@@ -242,3 +242,54 @@
           j        (think/deliberate w (entity/entity w pid))]
       (is (= :deliver (:type j))
           "deliver (build) outranks haul (stockpile): material feeds the site, not the pile"))))
+
+;; ---------------------------------------------------------------------------
+;; give-construct: build a READY blueprint (construction increment 4).
+;; ---------------------------------------------------------------------------
+
+(deftest construct-giver-yields-for-a-ready-blueprint
+  (testing "a fully-delivered blueprint yields a construct job at an adjacent cell"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          bp       (assoc (entity/make-blueprint :wall [5 5]) :delivered {:stone 5})
+          w        (entity/add-entity w0 bp)
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :construct (:type j)))
+      (is (= (:id bp) (:blueprint-id j)))
+      (is (some? (:stand j))                      "picks an adjacent standing cell")
+      (is (= 1 (apply max (map #(Math/abs (- (long %1) (long %2)))
+                               (:stand j) [5 5])))  "the stand cell is 8-adjacent to the site"))))
+
+(deftest construct-giver-skips-an-unready-blueprint
+  (testing "a blueprint still missing material is left for the deliver leaf"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          bp       (assoc (entity/make-blueprint :wall [5 5]) :delivered {:stone 2})  ; 2/5
+          w        (entity/add-entity w0 bp)
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (not= :construct (:type j)) "not ready -> no construct job"))))
+
+(deftest construct-giver-skips-a-reserved-blueprint
+  (testing "a site another pawn is already building is not re-claimed"
+    (let [[w0 a] (world+pawn {:food 1.0} [0 0])
+          bp     (assoc (entity/make-blueprint :wall [5 5]) :delivered {:stone 5})
+          b      (entity/make-pawn "B" [6 5])
+          w      (-> w0
+                     (entity/add-entity bp)
+                     (entity/add-entity b)
+                     (entity/update-entity (:id b) assoc
+                                           :job (assoc (job/construct (:id bp) [6 5])
+                                                       :state :in-progress :phase :build)))
+          j      (think/deliberate w (entity/entity w a))]
+      (is (not= :construct (:type j)) "the site is reserved by B's construct job"))))
+
+(deftest construct-out-prioritizes-deliver-and-haul
+  (testing "a ready site is finished before more material is fetched or items hauled"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          ready    (assoc (entity/make-blueprint :wall [5 5]) :delivered {:stone 5})
+          needy    (entity/make-blueprint :wall [8 8])         ; still wants material
+          w        (-> w0
+                       (entity/add-entity ready)
+                       (entity/add-entity needy)
+                       (zone/add-stockpile [10 10] [11 11])
+                       (entity/add-entity (entity/make-item :stone [2 0])))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :construct (:type j)) "finish-ready beats fetch-more-material beats stockpile"))))

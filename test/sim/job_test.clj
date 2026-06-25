@@ -10,6 +10,7 @@
    [sim.tile     :as tile]
    [sim.log      :as log]
    [sim.movement :as movement]
+   [sim.pathgrid :as pathgrid]
    [sim.job      :as job]))
 
 (defn- setup
@@ -156,6 +157,53 @@
   (let [[w0 pid iid bid] (setup-deliver [0 0] [3 0] [6 0])
         w1   (entity/update-entity w0 pid assoc :job (job/deliver iid bid))
         w2   (entity/remove-entity w1 iid)
+        w3   (job/advance w2 (entity/entity w2 pid))]
+    (is (job/failed? (:job (entity/entity w3 pid))))))
+
+;; ---------------------------------------------------------------------------
+;; Construct -- build a READY blueprint into its finished form (increment 4).
+;; The pawn stands ADJACENT (a wall promotes to a blocker) and accumulates work;
+;; promotion goes through remove-entity + add-entity so the pathgrid memo busts.
+;; ---------------------------------------------------------------------------
+
+(defn- setup-construct
+  "12x12 grass world with a builder pawn and a READY wall blueprint (its 5 stone
+   already delivered). Returns [world pawn-id blueprint-id]."
+  [pawn-pos bp-pos]
+  (let [w    (world/initial-world {:width 12 :height 12})
+        pawn (entity/make-pawn "builder" pawn-pos)
+        bp   (assoc (entity/make-blueprint :wall bp-pos) :delivered {:stone 5})]
+    [(-> w (entity/add-entity pawn) (entity/add-entity bp))
+     (:id pawn) (:id bp)]))
+
+(deftest construct-happy-path
+  (let [[w0 pid bid] (setup-construct [0 0] [5 5])
+        w1    (entity/update-entity w0 pid assoc :job (job/construct bid [4 5]))   ; stand adjacent
+        wf    (drive w1 pid 600)
+        pawn  (entity/entity wf pid)
+        built (first (filter entity/built? (entity/buildings wf)))]
+    (is (job/complete? (:job pawn))         "construct reaches :complete")
+    (is (nil? (entity/entity wf bid))       "the blueprint id is gone (promoted)")
+    (is (some? built)                       "a built wall now exists")
+    (is (= [5 5] (:pos built))              "at the blueprint's position")
+    (is (true? (:blocks-path? built))       "the finished wall blocks paths")
+    (is (= [4 5] (:pos pawn))               "builder stood adjacent, not inside the wall")
+    (is (seq (log/of-type wf :job/built))   "build was logged")))
+
+(deftest construct-promotion-busts-the-pathgrid-memo
+  (testing "promotion via remove+add changes the building-set identity, so the wall blocks"
+    (let [[w0 pid bid] (setup-construct [4 5] [5 5])       ; pawn already adjacent
+          w1 (entity/update-entity w0 pid assoc :job
+                                   (assoc (job/construct bid [4 5]) :phase :build))]
+      (is (pathgrid/passable? (pathgrid/for-world w1) 5 5) "ghost cell starts passable")
+      (let [wf (drive w1 pid 200)]
+        (is (not (pathgrid/passable? (pathgrid/for-world wf) 5 5))
+            "after build the wall cell is blocked (the memo rebuilt)")))))
+
+(deftest construct-fails-when-blueprint-vanishes
+  (let [[w0 pid bid] (setup-construct [4 5] [5 5])
+        w1   (entity/update-entity w0 pid assoc :job (job/construct bid [4 5]))
+        w2   (entity/remove-entity w1 bid)
         w3   (job/advance w2 (entity/entity w2 pid))]
     (is (job/failed? (:job (entity/entity w3 pid))))))
 

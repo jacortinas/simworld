@@ -16,6 +16,7 @@
   ;; plain-verb constructors (go-to, haul, eat).
   (:refer-clojure :exclude [deliver])
   (:require
+   [sim.defs        :as defs]
    [sim.entity      :as entity]
    [sim.log         :as log]
    [sim.movement    :as movement]
@@ -79,6 +80,22 @@
    :item-id      item-id
    :blueprint-id blueprint-id
    :phase        :go-to-item    ; :go-to-item | :pickup | :go-to-dest | :deposit
+   :path         nil
+   :path-index   0})
+
+(defn construct
+  "A job to BUILD a ready blueprint `blueprint-id` (its material bill already
+   delivered). The pawn walks to adjacent cell `stand` (a wall promotes to a path
+   blocker, so the builder must work from OUTSIDE the footprint), then accumulates
+   construction work until the blueprint promotes into its built form."
+  [blueprint-id stand]
+  {:type         :construct
+   :state        :pending
+   :priority     :normal
+   :source       :auto-assigned
+   :blueprint-id blueprint-id
+   :stand        stand
+   :phase        :go-to-site    ; :go-to-site | :build
    :path         nil
    :path-index   0})
 
@@ -390,3 +407,49 @@
                          :blueprint bp-id
                          :at        (:pos bp)})
             (mark-state pid :complete))))))
+
+(defmethod advance :construct
+  [world pawn]
+  (let [job   (:job pawn)
+        pid   (:id pawn)
+        bp-id (:blueprint-id job)
+        bp    (entity/entity world bp-id)]
+    (cond
+      (done? job) world
+
+      ;; Cancelled, or already built by someone else (its id is gone): fail.
+      (or (nil? bp) (not (entity/blueprint? bp)))
+      (mark-state world pid :failed)
+
+      :else
+      (case (:phase job)
+        :go-to-site
+        ;; Walk to the adjacent standing cell (NOT onto the footprint: a wall
+        ;; promotes to a blocker and would seal the builder inside it).
+        (let [[result world'] (movement/walk-toward world pawn (:stand job))]
+          (case result
+            :arrived (next-phase world' pid :build)
+            :failed  (mark-state world' pid :failed)
+            :walking (mark-in-progress world' pawn)))
+
+        :build
+        ;; Accumulate one tick of work; on reaching the def's :work-to-build,
+        ;; PROMOTE the blueprint to its built form via remove-entity + add-entity.
+        ;; The remove+add is load-bearing: it changes the (:kinds :building) set
+        ;; identity so the sim.pathgrid memo rebuilds and the finished wall blocks
+        ;; paths (an in-place update would leave it non-blocking).
+        (let [work-to (long (:work-to-build (defs/thing (:def bp)) 1))
+              done    (inc (long (:work-done bp 0)))]
+          (if (>= done work-to)
+            (let [built (cond-> (entity/make-built (:def bp) (:pos bp))
+                          (:size bp) (assoc :size (:size bp)))]
+              (-> world
+                  (entity/remove-entity bp-id)
+                  (entity/add-entity built)
+                  (log/append {:type      :job/built
+                               :pawn      pid
+                               :blueprint bp-id
+                               :building  (:def bp)
+                               :at        (:pos bp)})
+                  (mark-state pid :complete)))
+            (entity/update-entity world bp-id assoc :work-done done)))))))

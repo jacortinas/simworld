@@ -121,6 +121,44 @@
                 (when bp
                   (job/deliver (:id item) (:id bp)))))))))))
 
+(defn- adjacent-stand-cells
+  "Passable cells 8-adjacent to building b's footprint (but not on it) where a
+   pawn can stand to work. A wall promotes to a path blocker, so the builder must
+   work from OUTSIDE; this is the set of candidate standing spots."
+  [world b]
+  (let [{:keys [width height] :as grid} (:grid world)
+        fp (set (entity/footprint b))]
+    (->> fp
+         (mapcat (fn [[x y]]
+                   (for [dx [-1 0 1] dy [-1 0 1]
+                         :let  [nx (+ (long x) dx) ny (+ (long y) dy) c [nx ny]]
+                         :when (and (not (and (zero? dx) (zero? dy)))
+                                    (not (fp c))
+                                    (tile/in-bounds? width height nx ny)
+                                    (tile/passable? (tile/tile-at grid nx ny)))]
+                     c)))
+         distinct)))
+
+(defn- give-construct
+  "Among READY blueprints (material bill fully delivered) this pawn can reserve,
+   pick the nearest and mint a :construct job that stands at the nearest passable
+   adjacent cell and builds it. Nil when nothing is ready or no standing cell
+   exists, so the tree falls through to deliver/haul. The :construct reservation
+   then stops two pawns building one site. RimWorld's Construction WorkType
+   finish-the-frame WorkGiver."
+  [world pawn]
+  (let [claims (reservation/claims world)
+        pos    (:pos pawn)
+        ready  (->> (entity/blueprints world)
+                    (filter #(and (empty? (material-needs %))
+                                  (reservation/reservable? claims (:id %) (:id pawn)))))]
+    (when (seq ready)
+      (let [bp    (first (sort-by (juxt #(manhattan pos (:pos %)) :id) ready))
+            stand (first (sort-by (juxt #(manhattan pos %) identity)
+                                  (adjacent-stand-cells world bp)))]
+        (when stand
+          (job/construct (:id bp) stand))))))
+
 (def ^:const ^:private wander-radius 5)
 
 (defn- wander-target
@@ -171,24 +209,28 @@
             (job/haul (:id item) dest)))))))
 
 (def givers
-  {::eat     give-eat
-   ::deliver give-deliver
-   ::haul    give-haul
-   ::wander  give-wander})
+  {::eat       give-eat
+   ::construct give-construct
+   ::deliver   give-deliver
+   ::haul      give-haul
+   ::wander    give-wander})
 
 ;; ---------------------------------------------------------------------------
 ;; The tree + walker
 ;; ---------------------------------------------------------------------------
 
 (def default-tree
-  "Priority order: satisfy hunger, then deliver material to a build site, then
-   generic hauling to a stockpile, else wander. Deliver outranks haul so a colony
-   stocks its blueprints before tidying loose items. New behaviors slot in as
-   nodes; the walker never changes."
+  "Priority order: satisfy hunger, then FINISH a ready build site, then deliver
+   material to a site, then generic hauling to a stockpile, else wander. Construct
+   outranks deliver outranks haul: finish what's ready before fetching more
+   material before tidying loose items. New behaviors slot in as nodes; the walker
+   never changes. (This fixed order is the stopgap the planned work-priority matrix
+   will replace with a per-pawn, player-set priority table.)"
   {:type :priority
    :children [{:type  :conditional
                :pred  ::hungry?
                :child {:type :job-giver :give ::eat}}
+              {:type :job-giver :give ::construct}
               {:type :job-giver :give ::deliver}
               {:type :job-giver :give ::haul}
               {:type :job-giver :give ::wander}]})

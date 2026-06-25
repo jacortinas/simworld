@@ -72,12 +72,21 @@
           "shows as a labelled line on a covered tile"))))
 
 (deftest blueprint-building-labels-with-its-state
-  (testing "an unbuilt designation reads as '<Type> (blueprint)', a built one plain"
+  (testing "a blueprint reads as '<Type> (blueprint)' plus a progress sub-line; a built one is one plain line"
     (let [ghost {:id 7 :kind :building :def :wall :state :blueprint :pos [2 2]}
           built {:id 8 :kind :building :def :wall :state :built     :pos [3 2]}
           w     (world-with [] [ghost built])]
-      (is (= ["Grass 100%" "Wall (blueprint)"] (inspect/describe-tile w [2 2])))
+      (is (= ["Grass 100%" "Wall (blueprint)" "  stone 0/5, built 0%"]
+             (inspect/describe-tile w [2 2])))
       (is (= ["Grass 100%" "Wall"] (inspect/describe-tile w [3 2]))))))
+
+(deftest blueprint-progress-line-reflects-delivery-and-work
+  (testing "the sub-line tracks delivered material and construction percent"
+    (let [bp {:id 9 :kind :building :def :wall :state :blueprint :pos [1 1]
+              :delivered {:stone 3} :work-done 60}                 ; 3/5 stone, 60/120 work
+          w  (world-with [] [bp])]
+      (is (= ["Grass 100%" "Wall (blueprint)" "  stone 3/5, built 50%"]
+             (inspect/describe-tile w [1 1]))))))
 
 (deftest long-labels-truncate-with-ellipsis
   (testing "a label past max-line-len is cut to exactly max-line-len ending in ..."

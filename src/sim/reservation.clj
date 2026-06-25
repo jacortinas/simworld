@@ -19,14 +19,16 @@
 
 (defn reserved-targets
   "The entity ids a job claims (reserves). :haul, :eat and :deliver claim their
-   carried item (:item-id); :go-to claims nothing (cell/destination reservations
-   are out of scope). A :deliver claims only the item, NOT the blueprint: many
-   pawns deliver to one blueprint, so over-commitment to the site is bounded by
-   the give-deliver in-flight cap, not by a reservation. New reservable job types
-   extend this. Returns a seq or nil."
+   carried item (:item-id); :construct claims its blueprint (:blueprint-id) so two
+   pawns never build the same site; :go-to claims nothing (cell/destination
+   reservations are out of scope). A :deliver claims only the item, NOT the
+   blueprint: many pawns deliver to one blueprint, so over-commitment to the site
+   is bounded by the give-deliver in-flight cap, not by a reservation. New
+   reservable job types extend this. Returns a seq or nil."
   [job]
   (case (:type job)
     (:haul :eat :deliver) (when-let [item-id (:item-id job)] [item-id])
+    :construct            (when-let [bp-id (:blueprint-id job)] [bp-id])
     nil))
 
 (defn- active?

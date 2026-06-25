@@ -86,27 +86,30 @@
   [pos]
   (make-thing :tree pos))
 
-;; A wall: a built, path-blocking edifice. Inert (no band system reads :building
-;; in Spec 1); its :blocks-path? feeds sim.pathgrid. The :built state is runtime
-;; scaffolding (like a pawn's :job) -- Specs 2/3 add :blueprint/:frame states.
+;; A built structure: the finished form of a buildable def, with its path flags
+;; (:blocks-path? / :portal? / :open-ticks) intact from the def. A door (any def
+;; with :open-ticks) starts CLOSED (:open 0, dynamic movement state driven by
+;; sim.door, never in the PathGrid). This is the PROMOTION target a blueprint
+;; becomes (sim.job's :construct) and the generic make-building/make-door delegate
+;; to, so all three share one definition of "built".
+(defn make-built
+  "Construct the BUILT form of buildable def `def-id` at [x y]: the finished
+   structure (:state :built) with its path flags restored from the def; a door
+   also starts CLOSED. Pure -- does NOT insert."
+  [def-id pos]
+  (cond-> (assoc (make-thing def-id pos) :state :built)
+    (:open-ticks (defs/thing def-id)) (assoc :open 0)))
+
 (defn make-building
   "Construct a built wall (the :wall thing-def) at [x y]. Pure -- does NOT insert."
   [pos]
-  (-> (make-thing :wall pos)
-      (assoc :state :built)))
+  (make-built :wall pos))
 
-;; A door: a built, PASSABLE building. Shares make-building's :built scaffolding,
-;; but carries :portal? true (copied from the :door thing-def), which sim.pathgrid
-;; reads to mark its cell a portal and sim.regions reads to flood it as its own
-;; 1-cell region. :open is dynamic movement state (0 = closed, :open-ticks = fully
-;; open), driven by sim.door's tick system; it starts CLOSED. :open is plain world
-;; state, so it saves for free and never enters the PathGrid.
 (defn make-door
   "Construct a built door (the :door thing-def) at [x y], CLOSED. Pure -- does
    NOT insert."
   [pos]
-  (-> (make-thing :door pos)
-      (assoc :state :built :open 0)))
+  (make-built :door pos))
 
 ;; A blueprint: a building DESIGNATED but not yet built. Same :kind :building as
 ;; the finished structure (so it rides the :kinds index, footprint, and selection

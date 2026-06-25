@@ -9,6 +9,7 @@
    possibly off-map coords without taking a sim.tile dependency."
   (:require
    [clojure.string :as str]
+   [sim.defs   :as defs]
    [sim.tile   :as tile]
    [sim.entity :as entity]))
 
@@ -69,13 +70,38 @@
                 (if (entity/blueprint? ent) (str base " (blueprint)") base))
     (str/capitalize (name (:kind ent)))))
 
+(defn- blueprint-progress-line
+  "A second concept line for a blueprint: its delivered/needed material tallies
+   and construction work percent, e.g. 'stone 2/5, built 40%'. Reads :cost and
+   :work-to-build from the def. Indented two spaces to read as a sub-line."
+  [ent]
+  (let [d         (defs/thing (:def ent))
+        cost      (:cost d {})
+        delivered (:delivered ent {})
+        wt        (max 1 (long (:work-to-build d 1)))
+        wpct      (long (Math/round (* 100.0 (/ (double (:work-done ent 0)) (double wt)))))
+        mats      (->> (sort cost)
+                       (map (fn [[m n]] (str (name m) " " (get delivered m 0) "/" n)))
+                       (str/join ", "))]
+    (str "  " (if (seq mats) (str mats ", ") "") "built " wpct "%")))
+
+(defn- entity-lines
+  "Concept line(s) for one selectable entity: its label, plus a progress sub-line
+   for a blueprint. Most entities yield one line; a blueprint yields two."
+  [ent]
+  (let [label (truncate (entity-label ent))]
+    (if (and (= :building (:kind ent)) (entity/blueprint? ent))
+      [label (truncate (blueprint-progress-line ent))]
+      [label])))
+
 (defn describe-tile
-  "Vector of concept-line strings for tile [x y]: the terrain line first, then
-   one truncated label per selectable entity (by id). nil if [x y] is off-map."
+  "Vector of concept-line strings for tile [x y]: the terrain line first, then the
+   label line(s) per selectable entity (by id) -- a blueprint adds a progress
+   sub-line. nil if [x y] is off-map."
   [world [x y]]
   (let [{:keys [width height] :as grid} (:grid world)]
     ;; guard: off-map -> nil; also keeps tile-at from handing terrain-line a nil
     (when (tile/in-bounds? width height x y)
       (into [(truncate (terrain-line (tile/tile-at grid x y)))]
-            (map (comp truncate entity-label))
+            (mapcat entity-lines)
             (selectable-at world [x y])))))
