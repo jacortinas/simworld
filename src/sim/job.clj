@@ -11,6 +11,10 @@
    item AND the pawn.
 
    New job types are added by `defmethod advance :their-type`."
+  ;; `deliver` deliberately shadows clojure.core/deliver (the promise fn, unused
+  ;; here): the construction job reads as (job/deliver item bp), matching the
+  ;; plain-verb constructors (go-to, haul, eat).
+  (:refer-clojure :exclude [deliver])
   (:require
    [sim.entity      :as entity]
    [sim.log         :as log]
@@ -60,6 +64,23 @@
    :phase      :go-to-food    ; :go-to-food | :consume
    :path       nil
    :path-index 0})
+
+(defn deliver
+  "A job that picks up material item `item-id` and DELIVERS it into blueprint
+   `blueprint-id`, tallying it on the blueprint's :delivered (rather than dropping
+   it on the ground like :haul). A near-clone of :haul reusing :item-id, so the
+   carried material is reserved for free; its terminal :deposit phase mirrors
+   :eat's :consume (it consumes the item into the target)."
+  [item-id blueprint-id]
+  {:type         :deliver
+   :state        :pending
+   :priority     :normal
+   :source       :auto-assigned
+   :item-id      item-id
+   :blueprint-id blueprint-id
+   :phase        :go-to-item    ; :go-to-item | :pickup | :go-to-dest | :deposit
+   :path         nil
+   :path-index   0})
 
 ;; ---------------------------------------------------------------------------
 ;; Assignment — the ONE path every job assignment routes through (player
@@ -301,4 +322,71 @@
                          :item     food-id
                          :material (:material food)
                          :at       (:pos food)})
+            (mark-state pid :complete))))))
+
+(defmethod advance :deliver
+  [world pawn]
+  (let [job     (:job pawn)
+        pid     (:id pawn)
+        item-id (:item-id job)
+        bp-id   (:blueprint-id job)
+        item    (entity/entity world item-id)
+        bp      (entity/entity world bp-id)]
+    (cond
+      (done? job) world
+
+      ;; The material vanished, or the blueprint was cancelled / already built by
+      ;; someone else (its id is gone after the build's remove+add): fail.
+      (or (nil? item) (nil? bp) (not (entity/blueprint? bp)))
+      (mark-state world pid :failed)
+
+      :else
+      (case (:phase job)
+        :go-to-item
+        ;; Someone else grabbed the item first (a Layer 3 race): fail.
+        (if (and (:carried-by item) (not= (:carried-by item) pid))
+          (mark-state world pid :failed)
+          (let [[result world'] (movement/walk-toward world pawn (:pos item))]
+            (case result
+              :arrived (next-phase world' pid :pickup)
+              :failed  (mark-state world' pid :failed)
+              :walking (mark-in-progress world' pawn))))
+
+        :pickup
+        ;; Same-tick reservation guard as :haul: the loser fails rather than
+        ;; double-grab.
+        (if-not (reservation/can-reserve? world item-id pid)
+          (mark-state world pid :failed)
+          (-> world
+              (entity/update-entity pid     assoc :carrying item-id)
+              (entity/update-entity item-id (fn [it] (-> it (assoc :carried-by pid) (assoc :pos nil))))
+              (log/append {:type     :job/pickup
+                           :pawn     pid
+                           :item     item-id
+                           :material (:material item)
+                           :at       (:pos item)})
+              (next-phase pid :go-to-dest)))
+
+        :go-to-dest
+        ;; Walk to the blueprint's origin cell (passable while ghosted).
+        (let [[result world'] (movement/walk-toward world pawn (:pos bp))]
+          (case result
+            :arrived (next-phase world' pid :deposit)
+            :failed  (mark-state world' pid :failed)
+            :walking world'))
+
+        :deposit
+        ;; Consume the carried material INTO the blueprint: remove the item and
+        ;; bump the blueprint's :delivered tally for that material (mirrors :eat's
+        ;; consume, but the target is a blueprint, not the pawn).
+        (-> world
+            (entity/update-entity pid    assoc :carrying nil)
+            (entity/remove-entity item-id)
+            (entity/update-entity bp-id  (fn [b] (update-in b [:delivered (:material item)] (fnil inc 0))))
+            (log/append {:type      :job/deliver
+                         :pawn      pid
+                         :item      item-id
+                         :material  (:material item)
+                         :blueprint bp-id
+                         :at        (:pos bp)})
             (mark-state pid :complete))))))

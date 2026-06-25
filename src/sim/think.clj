@@ -57,6 +57,70 @@
       (let [target (first (sort-by (juxt #(manhattan pos (:pos %)) :id) foods))]
         (job/eat (:id target))))))
 
+(defn- material-needs
+  "Blueprint b's outstanding material bill: material -> units still needed
+   (cost - delivered), positive entries only. Reads :cost from the def."
+  [b]
+  (let [cost      (:cost (defs/thing (:def b)) {})
+        delivered (:delivered b {})]
+    (into {} (keep (fn [[m n]]
+                     (let [r (- (long n) (long (get delivered m 0)))]
+                       (when (pos? r) [m r])))
+                   cost))))
+
+(defn- in-flight-deliveries
+  "Map of [blueprint-id material] -> count of active :deliver jobs carrying that
+   material toward that blueprint. This is the OVER-DELIVERY guard reservations
+   can't give: a claim is per-item, so without this two pawns would both fetch
+   stone for a blueprint that needs only one more unit."
+  [world]
+  (reduce (fn [m p]
+            (let [j (:job p)]
+              (if (and j (= :deliver (:type j))
+                       (not (#{:complete :failed} (:state j))))
+                (if-let [mat (:material (entity/entity world (:item-id j)))]
+                  (update m [(:blueprint-id j) mat] (fnil inc 0))
+                  m)
+                m)))
+          {}
+          (entity/pawns world)))
+
+(defn- give-deliver
+  "Among loose material items this pawn can reserve whose material some blueprint
+   still wants (its bill minus what is already delivered AND already in flight),
+   pick the nearest to the pawn (Manhattan, ties by :id) and deliver it to the
+   nearest still-wanting blueprint to that item. Nil when nothing is wanted or no
+   matching reservable item exists, so the tree falls through. The in-flight cap
+   stops the colony over-fetching for a site that's nearly satisfied. In RimWorld
+   terms this is the Construction WorkType's haul-to-blueprint WorkGiver."
+  [world pawn]
+  (let [bps (entity/blueprints world)]
+    (when (seq bps)
+      (let [in-flight (in-flight-deliveries world)
+            ;; per blueprint, the UNCOMMITTED need: outstanding bill minus in-flight
+            wants     (->> bps
+                           (map (fn [b]
+                                  [b (into {} (keep (fn [[m r]]
+                                                      (let [u (- (long r) (long (get in-flight [(:id b) m] 0)))]
+                                                        (when (pos? u) [m u])))
+                                                    (material-needs b)))]))
+                           (remove (fn [[_ w]] (empty? w))))]
+        (when (seq wants)
+          (let [wanted-mats (into #{} (mapcat (comp keys second)) wants)
+                claims      (reservation/claims world)
+                pos         (:pos pawn)
+                items       (->> (entity/items world)
+                                 (filter #(and (:pos %)
+                                               (contains? wanted-mats (:material %))
+                                               (reservation/reservable? claims (:id %) (:id pawn)))))]
+            (when (seq items)
+              (let [item    (first (sort-by (juxt #(manhattan pos (:pos %)) :id) items))
+                    mat     (:material item)
+                    targets (->> wants (filter (fn [[_ w]] (contains? w mat))) (map first))
+                    bp      (first (sort-by (juxt #(manhattan (:pos item) (:pos %)) :id) targets))]
+                (when bp
+                  (job/deliver (:id item) (:id bp)))))))))))
+
 (def ^:const ^:private wander-radius 5)
 
 (defn- wander-target
@@ -107,21 +171,25 @@
             (job/haul (:id item) dest)))))))
 
 (def givers
-  {::eat    give-eat
-   ::haul   give-haul
-   ::wander give-wander})
+  {::eat     give-eat
+   ::deliver give-deliver
+   ::haul    give-haul
+   ::wander  give-wander})
 
 ;; ---------------------------------------------------------------------------
 ;; The tree + walker
 ;; ---------------------------------------------------------------------------
 
 (def default-tree
-  "Priority order: satisfy hunger, then do work (haul), else wander. New
-   behaviors slot in as nodes; the walker never changes."
+  "Priority order: satisfy hunger, then deliver material to a build site, then
+   generic hauling to a stockpile, else wander. Deliver outranks haul so a colony
+   stocks its blueprints before tidying loose items. New behaviors slot in as
+   nodes; the walker never changes."
   {:type :priority
    :children [{:type  :conditional
                :pred  ::hungry?
                :child {:type :job-giver :give ::eat}}
+              {:type :job-giver :give ::deliver}
               {:type :job-giver :give ::haul}
               {:type :job-giver :give ::wander}]})
 

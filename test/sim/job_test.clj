@@ -105,6 +105,60 @@
 ;; go-to — completion and failure
 ;; ---------------------------------------------------------------------------
 
+(defn- setup-deliver
+  "12x12 grass world with a builder pawn, a :stone item, and a :wall blueprint.
+   Returns [world pawn-id item-id blueprint-id]."
+  [pawn-pos item-pos bp-pos]
+  (let [w    (world/initial-world {:width 12 :height 12})
+        pawn (entity/make-pawn "builder" pawn-pos)
+        item (entity/make-item :stone item-pos)
+        bp   (entity/make-blueprint :wall bp-pos)]
+    [(-> w (entity/add-entity pawn) (entity/add-entity item) (entity/add-entity bp))
+     (:id pawn) (:id item) (:id bp)]))
+
+(deftest deliver-happy-path
+  (let [[w0 pid iid bid] (setup-deliver [0 0] [3 0] [6 0])
+        w1   (entity/update-entity w0 pid assoc :job (job/deliver iid bid))
+        wf   (drive w1 pid 200)
+        pawn (entity/entity wf pid)
+        bp   (entity/entity wf bid)]
+    (is (job/complete? (:job pawn))     "deliver reaches :complete")
+    (is (nil? (:carrying pawn))         "pawn is no longer carrying")
+    (is (nil? (entity/entity wf iid))   "the material item is consumed into the site")
+    (is (= 1 (get-in bp [:delivered :stone])) "the blueprint tallies one stone")
+    (is (seq (log/of-type wf :job/deliver)) "delivery was logged")))
+
+(deftest deliver-deposit-increments-not-overwrites
+  (testing "the :deposit phase consumes the item and bumps an existing tally"
+    (let [[w0 pid iid bid] (setup-deliver [6 0] [3 0] [6 0])     ; pawn already on the site
+          w1   (-> w0
+                   (entity/update-entity pid assoc :carrying iid
+                                         :job (assoc (job/deliver iid bid) :phase :deposit))
+                   (entity/update-entity iid assoc :carried-by pid :pos nil)
+                   (entity/update-entity bid assoc :delivered {:stone 2}))   ; pre-seeded tally
+          w2   (job/advance w1 (entity/entity w1 pid))
+          pawn (entity/entity w2 pid)
+          bp   (entity/entity w2 bid)]
+      (is (job/complete? (:job pawn)))
+      (is (nil? (:carrying pawn)))
+      (is (nil? (entity/entity w2 iid))           "item consumed")
+      (is (= 3 (get-in bp [:delivered :stone]))   "tally incremented 2 to 3, not replaced"))))
+
+(deftest deliver-fails-when-blueprint-vanishes
+  (testing "a cancelled or already-built blueprint fails the delivery, no NPE"
+    (let [[w0 pid iid bid] (setup-deliver [0 0] [3 0] [6 0])
+          w1   (entity/update-entity w0 pid assoc :job (job/deliver iid bid))
+          w2   (entity/remove-entity w1 bid)            ; blueprint cancelled mid-haul
+          w3   (job/advance w2 (entity/entity w2 pid))]
+      (is (job/failed? (:job (entity/entity w3 pid)))))))
+
+(deftest deliver-fails-when-item-vanishes
+  (let [[w0 pid iid bid] (setup-deliver [0 0] [3 0] [6 0])
+        w1   (entity/update-entity w0 pid assoc :job (job/deliver iid bid))
+        w2   (entity/remove-entity w1 iid)
+        w3   (job/advance w2 (entity/entity w2 pid))]
+    (is (job/failed? (:job (entity/entity w3 pid))))))
+
 (deftest go-to-completes
   (let [[w0 pid _] (setup [0 0] [0 0])
         w1   (entity/update-entity w0 pid assoc :job (job/go-to [4 4]))

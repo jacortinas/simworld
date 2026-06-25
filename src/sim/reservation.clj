@@ -18,12 +18,15 @@
 (set! *warn-on-reflection* true)
 
 (defn reserved-targets
-  "The entity ids a job claims (reserves). :haul and :eat claim their item;
-   :go-to claims nothing (cell/destination reservations are out of scope). New
-   reservable job types extend this. Returns a seq or nil."
+  "The entity ids a job claims (reserves). :haul, :eat and :deliver claim their
+   carried item (:item-id); :go-to claims nothing (cell/destination reservations
+   are out of scope). A :deliver claims only the item, NOT the blueprint: many
+   pawns deliver to one blueprint, so over-commitment to the site is bounded by
+   the give-deliver in-flight cap, not by a reservation. New reservable job types
+   extend this. Returns a seq or nil."
   [job]
   (case (:type job)
-    (:haul :eat) (when-let [item-id (:item-id job)] [item-id])
+    (:haul :eat :deliver) (when-let [item-id (:item-id job)] [item-id])
     nil))
 
 (defn- active?

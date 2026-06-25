@@ -173,3 +173,72 @@
                        (zone/add-stockpile [8 8] [9 9]))
           j        (think/deliberate w (entity/entity w pid))]
       (is (= :haul (:type j)) "work beats idling"))))
+
+;; ---------------------------------------------------------------------------
+;; give-deliver: haul material to a blueprint (construction increment 3).
+;; ---------------------------------------------------------------------------
+
+(deftest deliver-giver-yields-deliver-job
+  (testing "a stone item + a wall blueprint that wants stone -> a :deliver job"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          bp       (entity/make-blueprint :wall [5 0])      ; :cost {:stone 5}
+          stone    (entity/make-item :stone [2 0])
+          w        (-> w0 (entity/add-entity bp) (entity/add-entity stone))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :deliver (:type j)))
+      (is (= (:id stone) (:item-id j))      "carries the matching material")
+      (is (= (:id bp)    (:blueprint-id j)) "targets the blueprint"))))
+
+(deftest deliver-giver-needs-a-matching-material
+  (testing "a wall wants stone; a lone wood item never becomes a delivery"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          w        (-> w0
+                       (entity/add-entity (entity/make-blueprint :wall [5 0]))
+                       (entity/add-entity (entity/make-item :wood [2 0])))   ; wrong material
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (not= :deliver (:type j)) "wood does not satisfy a stone bill"))))
+
+(deftest deliver-giver-skips-fully-delivered
+  (testing "a blueprint whose bill is met yields no further delivery"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          bp       (assoc (entity/make-blueprint :wall [5 0]) :delivered {:stone 5})
+          w        (-> w0 (entity/add-entity bp) (entity/add-entity (entity/make-item :stone [2 0])))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (not= :deliver (:type j)) "fully-stocked site needs no more material"))))
+
+(deftest deliver-giver-respects-the-over-delivery-cap
+  (testing "in-flight deliveries count against a site's remaining need"
+    (let [build-world
+          (fn [delivered]
+            ;; blueprint at `delivered`/5 stone, a free stone for A, and pawn B
+            ;; already carrying a stone mid-deliver to the same blueprint.
+            (let [[w0 a] (world+pawn {:food 1.0} [0 0])
+                  bp     (assoc (entity/make-blueprint :wall [6 0]) :delivered {:stone delivered})
+                  free   (entity/make-item :stone [2 0])
+                  bstone (entity/make-item :stone [3 0])
+                  b      (entity/make-pawn "B" [3 0])
+                  w      (-> w0
+                            (entity/add-entity bp) (entity/add-entity free)
+                            (entity/add-entity bstone) (entity/add-entity b)
+                            (entity/update-entity (:id b) assoc :carrying (:id bstone)
+                                                  :job (assoc (job/deliver (:id bstone) (:id bp))
+                                                              :state :in-progress :phase :go-to-dest))
+                            (entity/update-entity (:id bstone) assoc :carried-by (:id b) :pos nil))]
+              [w a]))]
+      (let [[w a] (build-world 4)]                ; needs 1 more, 1 in flight -> 0 uncommitted
+        (is (not= :deliver (:type (think/deliberate w (entity/entity w a))))
+            "no new delivery when in-flight already covers the remaining need"))
+      (let [[w a] (build-world 3)]                ; needs 2 more, 1 in flight -> 1 uncommitted
+        (is (= :deliver (:type (think/deliberate w (entity/entity w a))))
+            "a delivery is minted when the site is still short after in-flight")))))
+
+(deftest deliver-out-prioritizes-haul
+  (testing "with both a build site needing material and a stockpile, BUILDING wins"
+    (let [[w0 pid] (world+pawn {:food 1.0} [0 0])
+          w        (-> w0
+                       (zone/add-stockpile [10 10] [11 11])
+                       (entity/add-entity (entity/make-blueprint :wall [5 0]))
+                       (entity/add-entity (entity/make-item :stone [2 0])))
+          j        (think/deliberate w (entity/entity w pid))]
+      (is (= :deliver (:type j))
+          "deliver (build) outranks haul (stockpile): material feeds the site, not the pile"))))
