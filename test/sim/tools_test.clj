@@ -12,10 +12,16 @@
     (is (nil? (tools/tool :select)))
     (is (nil? (tools/tool nil)))))
 
-(deftest build-is-a-click-tool
+(deftest build-is-a-drag-tool
   (let [t (tools/tool :build)]
     (is (some? t))
-    (is (false? (:drag? t))   "build places on a single click, not a drag")
+    (is (true? (:drag? t))    "walls drag to paint a line (a click = a 1-cell drag)")
+    (is (fn? (:on-commit t))  "a drag tool exposes :on-commit")))
+
+(deftest deconstruct-is-a-click-tool
+  (let [t (tools/tool :deconstruct)]
+    (is (some? t))
+    (is (false? (:drag? t))   "deconstruct removes one building per click")
     (is (fn? (:on-click t))   "a click tool exposes :on-click")))
 
 (deftest build-door-is-a-drag-tool

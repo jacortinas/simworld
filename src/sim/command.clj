@@ -140,6 +140,26 @@
   [tx ty]
   (place-building! tx ty #(entity/make-blueprint :door %)))
 
+(defn build-wall-line!
+  "Designate a LINE of wall blueprints along the dragged line (start..current,
+   clamped to a dominant-axis line by door-span). Unlike a door span (ONE sized
+   entity), each cell becomes its OWN 1x1 wall blueprint, and each is placed only
+   where can-build? holds, so dragging across an obstacle fills the buildable cells
+   and silently skips the rest. A click (zero-length drag) designates one wall."
+  [start current]
+  (let [[[ox oy] [w h]] (door-span start current)
+        ox (long ox) oy (long oy)
+        cells (for [dy (range h) dx (range w)] [(+ ox (long dx)) (+ oy (long dy))])]
+    (swap! world/world
+           (fn [wd]
+             (reduce (fn [wd' cell]
+                       (if (can-build? wd' cell)
+                         (entity/add-entity wd' (entity/make-blueprint :wall cell))
+                         wd'))
+                     wd
+                     cells))))
+  nil)
+
 (defn build-door-span!
   "Designate ONE door spanning the dragged line (start..current, clamped to a line
    by door-span) as a BLUEPRINT, if its whole footprint is buildable. The drag's

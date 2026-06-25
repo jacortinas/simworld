@@ -159,3 +159,22 @@
   ;; the shared deconstruct cancels a door designation just like a wall
   (command/deconstruct-building! 3 3)
   (is (zero? (count (entity/buildings @world/world))) "door designation removed"))
+
+(deftest build-wall-line-places-one-blueprint-per-cell
+  (testing "dragging walls paints a line of independent 1x1 wall blueprints"
+    (world/reset-world!)
+    (command/build-wall-line! [2 2] [5 2])                 ; a 4-wide horizontal line
+    (let [bps (entity/blueprints @world/world)]
+      (is (= 4 (count bps)) "one blueprint per cell of the line")
+      (is (every? #(= :wall (:def %)) bps))
+      (is (every? entity/blueprint? bps))
+      (is (every? #(= [1 1] (:size % [1 1])) bps) "each is 1x1, not one sized entity")
+      (is (= #{[2 2] [3 2] [4 2] [5 2]} (set (map :pos bps))) "covers the dragged line"))))
+
+(deftest build-wall-line-skips-unbuildable-cells
+  (testing "a drag fills the buildable cells and silently skips the rest"
+    (world/reset-world!)
+    (swap! world/world entity/add-entity (entity/make-pawn "blocker" [3 2]))  ; occupies [3 2]
+    (command/build-wall-line! [2 2] [5 2])
+    (is (= #{[2 2] [4 2] [5 2]} (set (map :pos (entity/blueprints @world/world))))
+        "the occupied cell is skipped; the rest are placed")))

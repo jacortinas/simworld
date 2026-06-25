@@ -1,9 +1,10 @@
 (ns sim.render.layers.build-cursor
-  "Single-cell hover indicator for the build modes (a translucent quad at the
-   hovered tile, green if placeable / red if not). Shared by :build (walls) and
-   :build-door (doors): both place one building per click and use the same
-   can-build? validity, so one cursor serves both. Pure cell-rect is tested
-   headless; the GL fill mirrors layers/zones.clj and is not unit-tested."
+  "Placement preview for the build modes (a translucent quad per cell, green if
+   placeable / red if not). Shared by :build (walls) and :build-door (doors): both
+   are DRAG-placed and use the same can-build? validity, so one cursor serves both.
+   On a wall drag it previews the line per-cell; on a door drag the span as a unit;
+   otherwise the single hovered cell. Pure cell-rect is tested headless; the GL
+   fill mirrors layers/zones.clj and is not unit-tested."
   (:require
    [sim.command  :as command]
    [sim.ui-state :as ui])
@@ -48,7 +49,16 @@
                          (.draw batch pixel (float x) (float y) (float w) (float h))))
                      (.setColor batch Color/WHITE))]
     (cond
-      ;; door drag in flight: preview the spanned gate, validity over the whole span
+      ;; wall drag in flight: a LINE of independent 1x1 walls, each cell tinted by
+      ;; its OWN validity (build-wall-line! places only the buildable cells).
+      (and (= :build (ui/mode)) (ui/drag))
+      (let [{:keys [start current]} (ui/drag)
+            [origin size] (command/door-span start current)]
+        (doseq [cell (footprint-cells origin size)]
+          (draw-cells [cell] (command/can-build? world cell))))
+
+      ;; door drag in flight: the spanned gate is ONE entity, so validity is over
+      ;; the whole span (all-or-nothing).
       (and (= :build-door (ui/mode)) (ui/drag))
       (let [{:keys [start current]} (ui/drag)
             [origin size] (command/door-span start current)]

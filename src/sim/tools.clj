@@ -24,15 +24,17 @@
 (def by-mode
   "ui-state :mode -> tool spec. Add a placement verb by adding ONE entry here
    plus a key->mode binding in sim.input/tool-keys."
-  {:build
-   {:drag?    false
-    :on-click (fn [tx ty shift?]
-                (if shift?
-                  (command/deconstruct-building! tx ty)
-                  (command/build-wall! tx ty)))}
+  {;; Walls DRAG to paint a line (a click = a 1-cell drag = one wall); each cell is
+   ;; its own 1x1 wall blueprint, placed where buildable. SHIFT+drag erases.
+   :build
+   {:drag?     true
+    :on-commit (fn [start current erase?]
+                 (if erase?
+                   (command/deconstruct-span! start current)
+                   (command/build-wall-line! start current)))}
 
    ;; Doors DRAG to span a gate (a click = a 1-cell drag = a 1x1 door); the drag's
-   ;; length becomes the door's footprint. SHIFT+drag erases buildings in the span.
+   ;; length becomes the door's footprint (ONE sized entity). SHIFT+drag erases.
    :build-door
    {:drag?     true
     :on-commit (fn [start current erase?]
