@@ -160,11 +160,31 @@
 ;; Public API
 ;; ---------------------------------------------------------------------------
 
+(defn- draw-ui-rect
+  "Draw one UI button-spec {:rect [x y w h] :label :fill} over the world image.
+   Rects are UI-cam coords (Y-up, origin bottom-left), flipped to image space so a
+   bottom-left-anchored widget lands bottom-left of the image. Lets a UI overlay
+   (the build menu, future work-priority grid) be validated by eye, since the GL
+   widgets can't run headlessly."
+  [^java.awt.Graphics2D g img-h {:keys [rect label fill]}]
+  (let [[x y w h] rect
+        x (long x) w (long w) h (long h)
+        top (- (long img-h) (+ (long y) h))]
+    (.setColor g (if fill (->color (subvec fill 0 3) (nth fill 3 1.0)) (Color. 41 41 51)))
+    (.fillRect g x top w h)
+    (.setColor g (Color. 140 128 102))
+    (.drawRect g x top w h)
+    (when label
+      (.setColor g Color/WHITE)
+      (.drawString g ^String (str label) (+ x 5) (+ top (- h 7))))))
+
 (defn render-image
-  "Rasterize `world` to a BufferedImage. opts: {:tile-px N}. Pure; opens no
-   window. The layer order mirrors the GL compositor."
+  "Rasterize `world` to a BufferedImage. opts: {:tile-px N :ui-rects [...]}.
+   :ui-rects (optional) is a seq of {:rect [x y w h] :label :fill [r g b a]} UI
+   button-specs drawn over the world, for validating UI overlays by eye. Pure;
+   opens no window. The layer order mirrors the GL compositor."
   (^BufferedImage [world] (render-image world {}))
-  (^BufferedImage [world {:keys [tile-px] :or {tile-px default-tile-px}}]
+  (^BufferedImage [world {:keys [tile-px ui-rects] :or {tile-px default-tile-px}}]
    (let [grid   (:grid world)
          width  (long (:width grid))
          height (long (:height grid))
@@ -177,6 +197,7 @@
      (draw-items     g world ts height)
      (draw-buildings g world ts height)
      (draw-pawns     g world ts height)
+     (doseq [r ui-rects] (draw-ui-rect g (.getHeight img) r))
      (.dispose g)
      img)))
 

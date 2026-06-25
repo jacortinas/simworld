@@ -30,8 +30,9 @@
          :debug-regions?  false
          :debug-pathgrid? false
          :debug-rooms?    false
-         :mode            :select   ; :select | :zone-stockpile | :build | :build-door
-         :drag            nil}))    ; in-progress placement rect {:start [tx ty] :current [tx ty]}
+         :mode            :select   ; :select | :zone-stockpile | :build | :build-door | :deconstruct
+         :drag            nil        ; in-progress placement rect {:start [tx ty] :current [tx ty]}
+         :build-menu-open nil}))     ; expanded build-menu category id (nil = collapsed)
 
 (defn camera [] (:camera @ui-state))
 
@@ -130,6 +131,25 @@
   "Drop the in-progress placement rectangle."
   []
   (swap! ui-state assoc :drag nil))
+
+(defn build-menu-open
+  "The currently EXPANDED build-menu category id, or nil when collapsed. View
+   state; defaults safely when absent (reload/reset-safe)."
+  []
+  (:build-menu-open @ui-state))
+
+(defn set-build-menu-open!
+  "Expand build-menu category `cat-id` (or nil to collapse). Returns it."
+  [cat-id]
+  (swap! ui-state assoc :build-menu-open cat-id)
+  cat-id)
+
+(defn toggle-build-menu-category!
+  "Toggle category `cat-id`: collapse if it is the open one, else expand it.
+   Returns the new open category (cat-id or nil)."
+  [cat-id]
+  (:build-menu-open
+   (swap! ui-state update :build-menu-open #(when-not (= % cat-id) cat-id))))
 
 (defn pan!
   "Shift the camera center by [dx dy] world units."

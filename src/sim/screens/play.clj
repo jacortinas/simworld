@@ -15,6 +15,7 @@
    [sim.ui-state                        :as ui]
    [sim.ui.hud                          :as hud]
    [sim.ui.time-controls                :as time-controls]
+   [sim.ui.build-menu                   :as build-menu]
    [sim.ui.inspect-panel                :as inspect-panel]
    [sim.render.layers.terrain           :as terrain]
    [sim.render.layers.zones             :as zones-layer]
@@ -99,6 +100,9 @@
     ;; Top-right time controls (pause + 1x/2x/3x), per the sim.ui.layout
     ;; information hierarchy: global + interactive lives top-right.
     (time-controls/draw batch font pixel)
+    ;; Bottom-left build menu (RimWorld's Architect): category row + the open
+    ;; category's buildables. Arms a tool by setting ui-state/:mode.
+    (build-menu/draw batch font pixel)
     ;; Bottom-right hover inspect panel: reads (ui/hover), draws under the UI
     ;; cam like the HUD. No-op when nothing is hovered.
     (inspect-panel/draw batch font pixel world)
@@ -119,7 +123,9 @@
     ;; Time controls get first dibs on a left click (top-right), then the HUD
     ;; bar (bottom). Both sit ON TOP of the world, so they eat the click before
     ;; it can become a world command, the input-side mirror of their z-order.
-    :on-ui-click        (fn [x y] (or (time-controls/click! x y) (hud/click! x y)))
+    :on-ui-click        (fn [x y] (or (time-controls/click! x y)
+                                      (build-menu/click! x y)
+                                      (hud/click! x y)))
     :on-toggle-pause    (fn [] (clock/toggle-pause!))
     ;; Selecting a speed un-pauses (RimWorld feel); set-speed! itself is
     ;; pause-orthogonal, the resume! is the UI policy.

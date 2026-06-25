@@ -45,7 +45,14 @@
     :on-commit (fn [start current erase?]
                  (if erase?
                    (command/erase-stockpile! start current)
-                   (command/commit-stockpile! start current)))}})
+                   (command/commit-stockpile! start current)))}
+
+   ;; Orders/Deconstruct: a click designator that removes the building (or cancels
+   ;; the blueprint, refunding material) at the clicked cell. No drag, no shift.
+   :deconstruct
+   {:drag?    false
+    :on-click (fn [tx ty _shift?]
+                (command/deconstruct-building! tx ty))}})
 
 (defn tool
   "The active tool spec for `mode`, or nil when `mode` is the default :select
