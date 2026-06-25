@@ -37,6 +37,13 @@
 (def ^:const ^:private gap 4)    ; gap between category buttons
 (def ^:const ^:private igap 2)   ; gap between stacked item buttons
 
+(defn category-row-width
+  "Total pixel width of the bottom-left category row (from the screen's left edge
+   through the last button). The bottom HUD status text starts past this so the
+   row never overlaps it. Pure."
+  []
+  (+ layout/pad (* (count categories) (+ cw gap))))
+
 (defn- category-index
   "Index of category `cat-id` in `categories`, or nil."
   [cat-id]

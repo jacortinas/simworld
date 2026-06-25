@@ -12,9 +12,10 @@
    bottom bar is pure status: it still EATS clicks (so a tap on the status text
    never leaks through as a world command) but has no button of its own."
   (:require
-   [sim.clock    :as clock]
-   [sim.entity   :as entity]
-   [sim.ui-state :as ui])
+   [sim.clock         :as clock]
+   [sim.entity        :as entity]
+   [sim.ui-state      :as ui]
+   [sim.ui.build-menu :as build-menu])
   (:import
    (com.badlogic.gdx Gdx)
    (com.badlogic.gdx.graphics Color Pixmap Pixmap$Format Texture)
@@ -72,7 +73,9 @@
   (let [vw       (float (.getWidth Gdx/graphics))
         cap      (.getCapHeight font)
         bar-ty   (float (/ (+ bar-h cap) 2.0))           ; center line in [0,bar-h]
-        status-x (float 12)]
+        ;; Start the status text PAST the bottom-left build-menu category row so
+        ;; the buttons (which share this bar's vertical strip) never cover it.
+        status-x (float (+ (build-menu/category-row-width) 12))]
     ;; full-width bar background, pinned to the bottom
     (.setColor batch bar-color)
     (.draw batch pixel (float 0) (float 0) vw (float bar-h))
