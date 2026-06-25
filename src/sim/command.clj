@@ -12,6 +12,7 @@
    [sim.entity   :as entity]
    [sim.inspect  :as inspect]
    [sim.job      :as job]
+   [sim.think    :as think]
    [sim.tile     :as tile]
    [sim.zone     :as zone]))
 
@@ -218,4 +219,14 @@
            (if-let [b (building-at w tx ty)]
              (remove-building w b)
              w)))
+  nil)
+
+(defn cycle-work-priority!
+  "Cycle pawn `pawn-id`'s priority for work-type `wt-id` to the next value
+   (think/next-priority: 1->2->3->4->off->1). The Work-tab click verb; the
+   world-mutating bridge, like the build verbs."
+  [pawn-id wt-id]
+  (swap! world/world entity/update-entity pawn-id
+         (fn [p] (assoc-in p [:work-priorities wt-id]
+                           (think/next-priority (get-in p [:work-priorities wt-id])))))
   nil)

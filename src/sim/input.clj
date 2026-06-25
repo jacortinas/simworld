@@ -125,6 +125,7 @@
               Input$Keys/ESCAPE (do (cond
                                       (tools/tool (ui/mode))  (do (ui/set-mode! :select) (ui/clear-drag!))
                                       (ui/build-menu-open)    (ui/set-build-menu-open! nil)
+                                      (ui/work-tab-open?)     (ui/toggle-work-tab!)
                                       :else                   (when on-open-pause-menu (on-open-pause-menu)))
                                     true)
               false))))

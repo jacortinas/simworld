@@ -16,6 +16,7 @@
    [sim.ui.hud                          :as hud]
    [sim.ui.time-controls                :as time-controls]
    [sim.ui.build-menu                   :as build-menu]
+   [sim.ui.work-tab                     :as work-tab]
    [sim.ui.inspect-panel                :as inspect-panel]
    [sim.render.layers.terrain           :as terrain]
    [sim.render.layers.zones             :as zones-layer]
@@ -103,6 +104,9 @@
     ;; Bottom-left build menu (RimWorld's Architect): category row + the open
     ;; category's buildables. Arms a tool by setting ui-state/:mode.
     (build-menu/draw batch font pixel)
+    ;; Top-left Work tab: a toggle button + (when open) the pawns x work-types
+    ;; priority grid (RimWorld's Work tab). Reads per-pawn :work-priorities.
+    (work-tab/draw batch font pixel world)
     ;; Bottom-right hover inspect panel: reads (ui/hover), draws under the UI
     ;; cam like the HUD. No-op when nothing is hovered.
     (inspect-panel/draw batch font pixel world)
@@ -125,6 +129,7 @@
     ;; it can become a world command, the input-side mirror of their z-order.
     :on-ui-click        (fn [x y] (or (time-controls/click! x y)
                                       (build-menu/click! x y)
+                                      (work-tab/click! x y)
                                       (hud/click! x y)))
     :on-toggle-pause    (fn [] (clock/toggle-pause!))
     ;; Selecting a speed un-pauses (RimWorld feel); set-speed! itself is

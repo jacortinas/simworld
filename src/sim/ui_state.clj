@@ -32,7 +32,8 @@
          :debug-rooms?    false
          :mode            :select   ; :select | :zone-stockpile | :build | :build-door | :deconstruct
          :drag            nil        ; in-progress placement rect {:start [tx ty] :current [tx ty]}
-         :build-menu-open nil}))     ; expanded build-menu category id (nil = collapsed)
+         :build-menu-open nil        ; expanded build-menu category id (nil = collapsed)
+         :work-tab-open?  false}))   ; is the Work-priorities tab showing?
 
 (defn camera [] (:camera @ui-state))
 
@@ -150,6 +151,16 @@
   [cat-id]
   (:build-menu-open
    (swap! ui-state update :build-menu-open #(when-not (= % cat-id) cat-id))))
+
+(defn work-tab-open?
+  "Is the Work-priorities tab currently showing? View state; defaults false."
+  []
+  (:work-tab-open? @ui-state))
+
+(defn toggle-work-tab!
+  "Flip the Work tab open/closed. Returns the new boolean."
+  []
+  (:work-tab-open? (swap! ui-state update :work-tab-open? not)))
 
 (defn pan!
   "Shift the camera center by [dx dy] world units."

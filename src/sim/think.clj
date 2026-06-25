@@ -261,6 +261,19 @@
    un-customized pawn reproduces the previous fixed Build-then-Haul order."
   (zipmap (map :id work-types) (repeat default-priority)))
 
+(def priority-cycle
+  "Click-cycle order for a Work-tab cell: 1 (highest urgency) .. 4 (lowest), then
+   off, then wrap."
+  [1 2 3 4 0])
+
+(defn next-priority
+  "The priority a Work-tab cell takes when clicked: the next value in priority-cycle.
+   nil/absent is treated as the default, so a first click moves off the default."
+  [p]
+  (let [p   (long (or p default-priority))
+        idx (.indexOf ^java.util.List priority-cycle (long p))]
+    (nth priority-cycle (mod (inc (max 0 idx)) (count priority-cycle)))))
+
 (def ^:private work-column
   "work-type id -> its column index (the within-priority tiebreak)."
   (into {} (map-indexed (fn [i wt] [(:id wt) i]) work-types)))

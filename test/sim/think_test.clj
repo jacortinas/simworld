@@ -401,3 +401,10 @@
           w  (add w p)
           j  (think/deliberate w (entity/entity w (:id p)))]
       (is (= :go-to (:type j)) "no enabled work -> wander"))))
+
+(deftest next-priority-cycles-through-1-4-then-off
+  (is (= 4 (think/next-priority 3)) "default 3 -> 4")
+  (is (= 0 (think/next-priority 4)) "4 (lowest) -> off")
+  (is (= 1 (think/next-priority 0)) "off -> 1 (highest)")
+  (is (= 2 (think/next-priority 1)))
+  (is (= 4 (think/next-priority nil)) "absent is treated as the default (3) -> 4"))

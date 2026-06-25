@@ -178,3 +178,14 @@
     (command/build-wall-line! [2 2] [5 2])
     (is (= #{[2 2] [4 2] [5 2]} (set (map :pos (entity/blueprints @world/world))))
         "the occupied cell is skipped; the rest are placed")))
+
+(deftest cycle-work-priority-advances-a-pawns-priority
+  (testing "clicking a Work-tab cell cycles that pawn's priority for a work type"
+    (world/reset-world!)
+    (let [pid (:id (world/spawn-pawn! "P" [1 1]))]
+      (command/cycle-work-priority! pid :build)        ; default (absent, =3) -> 4
+      (is (= 4 (get-in (entity/entity @world/world pid) [:work-priorities :build])))
+      (command/cycle-work-priority! pid :build)        ; 4 -> off
+      (is (= 0 (get-in (entity/entity @world/world pid) [:work-priorities :build])))
+      (command/cycle-work-priority! pid :build)        ; off -> 1
+      (is (= 1 (get-in (entity/entity @world/world pid) [:work-priorities :build]))))))
