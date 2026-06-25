@@ -41,14 +41,12 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private tool-keys
-  "Keycode -> the ui-state :mode it enters. The one input-layer half of a tool
-   (libGDX keys live here, behavior lives in sim.tools); adding a tool's hotkey
-   is a one-line edit here, not a new keyDown branch."
-  ;; B/O are per-building hotkeys; a categorized build MENU will subsume them
-  ;; later (then a tool carries which def to place, not a dedicated key each).
-  {(int Input$Keys/Z) :zone-stockpile
-   (int Input$Keys/B) :build
-   (int Input$Keys/O) :build-door})
+  "Keycode -> the ui-state :mode it enters. The keyboard half of a tool (libGDX
+   keys here, behavior in sim.tools). Now EMPTY: the bottom-left build menu
+   (sim.ui.build-menu) is the entry point for placement tools, so the old per-key
+   modes (B wall, O door, Z stockpile) were retired. The map + the keyDown lookup
+   stay as the seam to re-add an accelerator key later (one entry, no new branch)."
+  {})
 
 (defn- shift-down?
   "Is either Shift key currently held? Polled from live libGDX input — used to
@@ -121,12 +119,13 @@
               Input$Keys/F1     (do (ui/toggle-debug-regions?) true)     ; toggle region overlay
               Input$Keys/F2     (do (ui/toggle-debug-pathgrid?) true)    ; toggle pathgrid overlay
               Input$Keys/F3     (do (ui/toggle-debug-rooms?) true)       ; toggle rooms overlay
-              ;; Escape is context-sensitive: back out of the active tool first;
-              ;; only with no tool active does it open the pause menu (RimWorld
-              ;; backs out of the current tool before the menu).
-              Input$Keys/ESCAPE (do (if (tools/tool (ui/mode))
-                                      (do (ui/set-mode! :select) (ui/clear-drag!))
-                                      (when on-open-pause-menu (on-open-pause-menu)))
+              ;; Escape is context-sensitive (RimWorld backs out a level at a time):
+              ;; disarm the active tool first, then collapse an open build-menu
+              ;; category, and only with neither active does it open the pause menu.
+              Input$Keys/ESCAPE (do (cond
+                                      (tools/tool (ui/mode))  (do (ui/set-mode! :select) (ui/clear-drag!))
+                                      (ui/build-menu-open)    (ui/set-build-menu-open! nil)
+                                      :else                   (when on-open-pause-menu (on-open-pause-menu)))
                                     true)
               false))))
 
