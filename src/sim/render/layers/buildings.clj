@@ -32,7 +32,9 @@
   [world ^SpriteBatch batch tile-size now-ms]
   (let [height (long (:height (:grid world)))
         ts     (long tile-size)]
-    (doseq [b (entity/buildings world)]
+    ;; Only BUILT structures here; unbuilt blueprints are drawn (ghosted) by
+    ;; the blueprints layer, which sits just above this one.
+    (doseq [b (filter entity/built? (entity/buildings world))]
       (when-let [[tx ty] (:pos b)]
         (if (:portal? b)
           ;; door: each footprint cell draws the closed slab (1 - open-fraction),

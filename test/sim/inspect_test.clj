@@ -71,6 +71,14 @@
       (is (= ["Grass 100%" "Wall"] (inspect/describe-tile w [2 1]))
           "shows as a labelled line on a covered tile"))))
 
+(deftest blueprint-building-labels-with-its-state
+  (testing "an unbuilt designation reads as '<Type> (blueprint)', a built one plain"
+    (let [ghost {:id 7 :kind :building :def :wall :state :blueprint :pos [2 2]}
+          built {:id 8 :kind :building :def :wall :state :built     :pos [3 2]}
+          w     (world-with [] [ghost built])]
+      (is (= ["Grass 100%" "Wall (blueprint)"] (inspect/describe-tile w [2 2])))
+      (is (= ["Grass 100%" "Wall"] (inspect/describe-tile w [3 2]))))))
+
 (deftest long-labels-truncate-with-ellipsis
   (testing "a label past max-line-len is cut to exactly max-line-len ending in ..."
     (let [pawn {:id 1 :kind :pawn :name (apply str (repeat 50 \X)) :pos [0 0]}

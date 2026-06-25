@@ -113,9 +113,13 @@
 (deftest build-and-deconstruct-wall-mutate-the-world
   (world/reset-world!)
   (command/build-wall! 3 3)
-  (is (= 1 (count (entity/buildings @world/world))) "wall placed")
+  (let [b (first (entity/buildings @world/world))]
+    (is (= 1 (count (entity/buildings @world/world))) "a wall designation placed")
+    (is (entity/blueprint? b) "placement now designates a BLUEPRINT, not an instant wall")
+    (is (= :wall (:def b)))
+    (is (not (contains? b :blocks-path?)) "the ghost does not block paths until built"))
   (command/deconstruct-building! 3 3)
-  (is (zero? (count (entity/buildings @world/world))) "wall removed"))
+  (is (zero? (count (entity/buildings @world/world))) "deconstruct cancels the designation"))
 
 (deftest door-span-clamps-a-drag-to-a-line
   (is (= [[2 5] [3 1]] (command/door-span [2 5] [4 5])) "horizontal drag -> n-wide line")
@@ -135,6 +139,7 @@
   (let [doors (entity/buildings @world/world)
         d     (first doors)]
     (is (= 1 (count doors)) "one door entity spans the whole gate")
+    (is (entity/blueprint? d) "the gate is designated as a blueprint")
     (is (= [3 3] (:pos d)) "origin at the min corner")
     (is (= [3 1] (:size d)) "size = the dragged line")
     (is (= :door (:def d)))
@@ -145,11 +150,12 @@
 (deftest build-and-deconstruct-door-mutate-the-world
   (world/reset-world!)
   (command/build-door! 3 3)
-  (let [doors (entity/buildings @world/world)]
-    (is (= 1 (count doors)) "door placed")
-    (is (= :door (:def (first doors))) "the placed building is a door")
-    (is (false? (:blocks-path? (first doors))) "a door does not block the path")
-    (is (true? (:portal? (first doors))) "a door is a portal"))
-  ;; the shared deconstruct removes a door just like a wall
+  (let [d (first (entity/buildings @world/world))]
+    (is (= 1 (count (entity/buildings @world/world))) "door designation placed")
+    (is (= :door (:def d)) "the designated building is a door")
+    (is (entity/blueprint? d) "it is a blueprint, not a built door")
+    (is (not (contains? d :portal?)) "a ghost is not yet a region portal")
+    (is (not (contains? d :open-ticks)) "and not yet a timed door"))
+  ;; the shared deconstruct cancels a door designation just like a wall
   (command/deconstruct-building! 3 3)
-  (is (zero? (count (entity/buildings @world/world))) "door removed"))
+  (is (zero? (count (entity/buildings @world/world))) "door designation removed"))

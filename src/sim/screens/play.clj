@@ -1,8 +1,8 @@
 (ns sim.screens.play
   "The :play screen. Draws the world (terrain -> zones -> flora -> items ->
-   buildings -> pawns -> selection box -> debug overlay -> debug-regions ->
-   debug-pathgrid -> debug-rooms -> build-cursor) under the world cam, then the
-   HUD + hover inspect panel under the UI cam.
+   buildings -> blueprints -> pawns -> selection box -> debug overlay ->
+   debug-regions -> debug-pathgrid -> debug-rooms -> build-cursor) under the world
+   cam, then the HUD + hover inspect panel under the UI cam.
    This is the body that USED to live in sim.render.gdx/render.
 
    make-processor wraps sim.input/make-processor with one extra injected
@@ -21,6 +21,7 @@
    [sim.render.layers.flora             :as flora-layer]
    [sim.render.layers.items             :as items-layer]
    [sim.render.layers.buildings         :as buildings-layer]
+   [sim.render.layers.blueprints        :as blueprints-layer]
    [sim.render.layers.pawns             :as pawns-layer]
    [sim.render.layers.selection         :as selection-layer]
    [sim.render.layers.debug             :as debug-layer]
@@ -69,6 +70,10 @@
     ;; Buildings (walls) above items and below pawns: occlude the floor but not
     ;; colonists.
     (buildings-layer/draw world batch tile-size now-ms)
+    ;; Blueprints (unbuilt designations) ghosted just above built structures and
+    ;; below pawns: a planned wall/door reads over the floor but a colonist on it
+    ;; still draws on top. Needs the 1px pixel for the progress bar.
+    (blueprints-layer/draw world batch tile-size pixel now-ms)
     (pawns-layer/draw world batch tile-size now-ms)
     ;; Selection box: world-space marker around the selected entity's tile (any
     ;; kind), reusing the 1px texture. Before the debug overlay so a debug path

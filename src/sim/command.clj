@@ -128,27 +128,29 @@
   nil)
 
 (defn build-wall!
-  "Place one wall building at tile [tx ty], if can-build?."
+  "Designate a wall at tile [tx ty]: place a wall BLUEPRINT (a pawn hauls the
+   material bill and constructs it), if can-build?. RimWorld's build-as-
+   designation, not the old instant god-mode wall."
   [tx ty]
-  (place-building! tx ty entity/make-building))
+  (place-building! tx ty #(entity/make-blueprint :wall %)))
 
 (defn build-door!
-  "Place one 1x1 door building at tile [tx ty], if can-build?. A door is a
-   passable portal building (see sim.entity/make-door)."
+  "Designate a 1x1 door at tile [tx ty]: place a door BLUEPRINT, if can-build?.
+   The ghost neither blocks paths nor acts as a portal until it is built."
   [tx ty]
-  (place-building! tx ty entity/make-door))
+  (place-building! tx ty #(entity/make-blueprint :door %)))
 
 (defn build-door-span!
-  "Place ONE door spanning the dragged line (start..current, clamped to a line by
-   door-span), if its whole footprint is buildable. The drag's length becomes the
-   door's :size, so this is how a multi-cell gate is placed; a click (zero-length
-   drag) places a 1x1 door."
+  "Designate ONE door spanning the dragged line (start..current, clamped to a line
+   by door-span) as a BLUEPRINT, if its whole footprint is buildable. The drag's
+   length becomes the door's :size, so this is how a multi-cell gate is designated;
+   a click (zero-length drag) designates a 1x1 door."
   [start current]
   (let [[origin size] (door-span start current)]
     (swap! world/world
            (fn [w]
              (if (can-build? w origin size)
-               (entity/add-entity w (assoc (entity/make-door origin) :size size))
+               (entity/add-entity w (assoc (entity/make-blueprint :door origin) :size size))
                w))))
   nil)
 

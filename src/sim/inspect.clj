@@ -65,7 +65,8 @@
     :pawn (:name ent)
     :item (str/capitalize (name (:material ent)))
     :tree "Tree"
-    :building (str/capitalize (name (:def ent :building)))   ; "Wall" / "Door"
+    :building (let [base (str/capitalize (name (:def ent :building)))]   ; "Wall" / "Door"
+                (if (entity/blueprint? ent) (str base " (blueprint)") base))
     (str/capitalize (name (:kind ent)))))
 
 (defn describe-tile

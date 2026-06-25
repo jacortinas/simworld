@@ -3,9 +3,15 @@
    from terrain costs with blocking buildings stamped INFINITY. Memoized by
    [grid identity, building-set identity] in for-world."
   (:require
-   [clojure.test :refer [deftest is testing]]
+   [clojure.test :refer [deftest is testing use-fixtures]]
+   [sim.defs     :as defs]
+   [sim.entity   :as entity]
    [sim.tile     :as tile]
    [sim.pathgrid :as pathgrid]))
+
+;; make-blueprint reads thing-defs; reload the bundled defs so a sibling ns
+;; swapping in alternate sources can't leave the registry partial.
+(use-fixtures :each (fn [t] (defs/load!) (t)))
 
 (deftest build-costs-mirror-terrain
   (let [pg (pathgrid/build (tile/make-grid 3 3) [])]   ; all grass, cost 1.0
@@ -21,6 +27,13 @@
         pg (pathgrid/build (tile/make-grid 3 3) [b])]
     (is (not (pathgrid/passable? pg 1 1)) "building cell blocked")
     (is (pathgrid/passable? pg 0 0) "other cells unaffected")))
+
+(deftest blueprint-cell-stays-passable
+  (testing "an unbuilt ghost has no :blocks-path?, so pawns route through it"
+    (let [bp (entity/make-blueprint :wall [1 1])
+          pg (pathgrid/build (tile/make-grid 3 3) [bp])]
+      (is (pathgrid/passable? pg 1 1) "ghost wall cell is walkable until built")
+      (is (pathgrid/passable? pg 0 0)))))
 
 (deftest door-cell-is-passable-but-a-portal
   (testing "a :portal? door leaves its cell passable (no INFINITY) yet flags it

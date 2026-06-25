@@ -168,6 +168,21 @@
          (.setColor batch Color/WHITE)
          (.draw batch region (float gx) (float gy) (float gw) (float gh)))))))
 
+(defn draw-graphic-tinted!
+  "Like draw-graphic! but blits with `color` as the tint (a translucent ghost, a
+   colored highlight) instead of white, then resets the batch to white so a later
+   layer can't inherit the tint. The one tinted blit; same untested-GL side as
+   draw-graphic! (the size/flip/facing math it calls stays pure)."
+  ([batch graphic-id anchor tile-size color now-ms]
+   (draw-graphic-tinted! batch graphic-id anchor tile-size color now-ms :down))
+  ([^SpriteBatch batch graphic-id anchor tile-size ^Color color now-ms facing]
+   (when-let [gr (defs/graphic graphic-id)]
+     (when-let [region (graphic-region gr facing now-ms)]
+       (let [[gx gy gw gh] (graphic/draw-rect gr anchor tile-size)]
+         (.setColor batch color)
+         (.draw batch region (float gx) (float gy) (float gw) (float gh))
+         (.setColor batch Color/WHITE))))))
+
 (defn draw-graphic-clipped!
   "Draw `keep` fraction (0..1) of `graphic-id` at world-pixel anchor [px py],
    retracting along `axis`: :x narrows the width (a horizontal door sliding into
