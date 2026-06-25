@@ -347,3 +347,57 @@
           w  (entity/add-entity w1 p)
           j  (think/deliberate w (entity/entity w (:id p)))]
       (is (not= :deliver (:type j)) "the only stone is unreachable, so no delivery is attempted"))))
+
+;; ---------------------------------------------------------------------------
+;; Work-priority matrix: per-pawn :work-priorities drive the WORK middle of
+;; deliberation (RimWorld's Work tab). Reflexes (eat) still precede work; wander
+;; still follows it.
+;; ---------------------------------------------------------------------------
+
+(defn- build-and-haul-world
+  "A 12x12 world with a READY wall site, a stockpile, and a loose haulable item,
+   so BOTH build work and haul work are available. Returns [world add-pawn-fn]."
+  []
+  (let [w (-> (world/initial-world {:width 12 :height 12})
+              (entity/add-entity (assoc (entity/make-blueprint :wall [5 5]) :delivered {:stone 5}))
+              (zone/add-stockpile [9 9] [10 10])
+              (entity/add-entity (entity/make-item :wood [2 2])))]
+    [w (fn [w pawn] (entity/add-entity w pawn))]))
+
+(deftest pawn-priorities-merges-over-defaults
+  (is (= think/default-priorities (think/pawn-priorities {})) "no overrides -> the defaults")
+  (is (= (assoc think/default-priorities :build 0)
+         (think/pawn-priorities {:work-priorities {:build 0}}))
+      "an override wins; unspecified work types keep the default"))
+
+(deftest default-pawn-builds-before-hauling
+  (testing "an un-customized pawn reproduces the old fixed Build-then-Haul order"
+    (let [[w add] (build-and-haul-world)
+          p  (entity/make-pawn "P" [0 0])                 ; no :work-priorities
+          w  (add w p)
+          j  (think/deliberate w (entity/entity w (:id p)))]
+      (is (= :construct (:type j)) "default order finishes the ready build first"))))
+
+(deftest disabling-a-work-type-skips-its-jobs
+  (testing "a pawn with Build OFF ignores the ready site and hauls instead"
+    (let [[w add] (build-and-haul-world)
+          p  (assoc (entity/make-pawn "P" [0 0]) :work-priorities {:build 0 :haul 3})
+          w  (add w p)
+          j  (think/deliberate w (entity/entity w (:id p)))]
+      (is (= :haul (:type j)) "Build disabled -> the build site is not this pawn's job"))))
+
+(deftest raising-a-priority-reorders-work
+  (testing "Haul at priority 1 beats Build at 3, so the pawn hauls before it builds"
+    (let [[w add] (build-and-haul-world)
+          p  (assoc (entity/make-pawn "P" [0 0]) :work-priorities {:build 3 :haul 1})
+          w  (add w p)
+          j  (think/deliberate w (entity/entity w (:id p)))]
+      (is (= :haul (:type j)) "a lower priority NUMBER is more urgent"))))
+
+(deftest all-work-disabled-falls-to-wander
+  (testing "a pawn with every work type off still wanders (idle), never stalls"
+    (let [[w add] (build-and-haul-world)
+          p  (assoc (entity/make-pawn "P" [0 0]) :work-priorities {:build 0 :haul 0})
+          w  (add w p)
+          j  (think/deliberate w (entity/entity w (:id p)))]
+      (is (= :go-to (:type j)) "no enabled work -> wander"))))

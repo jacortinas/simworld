@@ -232,37 +232,73 @@
    ::wander    give-wander})
 
 ;; ---------------------------------------------------------------------------
-;; The tree + walker
+;; Reflexes + the work-priority matrix (RimWorld's Work tab).
+;;
+;; Selection is three layers of DATA: (1) REFLEXES, always-first survival behaviors
+;; that preempt work; (2) WORK TYPES, ordered groups of givers the pawn does in its
+;; own PRIORITY order (the per-pawn matrix); (3) wander, the idle fallback. This
+;; replaces the old fixed think-tree order: the WORK middle is now per-pawn data
+;; (`:work-priorities` on the pawn), so the player sets who does what.
 ;; ---------------------------------------------------------------------------
 
-(def default-tree
-  "Priority order: satisfy hunger, then FINISH a ready build site, then deliver
-   material to a site, then generic hauling to a stockpile, else wander. Construct
-   outranks deliver outranks haul: finish what's ready before fetching more
-   material before tidying loose items. New behaviors slot in as nodes; the walker
-   never changes. (This fixed order is the stopgap the planned work-priority matrix
-   will replace with a per-pawn, player-set priority table.)"
-  {:type :priority
-   :children [{:type  :conditional
-               :pred  ::hungry?
-               :child {:type :job-giver :give ::eat}}
-              {:type :job-giver :give ::construct}
-              {:type :job-giver :give ::deliver}
-              {:type :job-giver :give ::haul}
-              {:type :job-giver :give ::wander}]})
+(def reflexes
+  "Always-first behaviors, in order: [pred-key giver-key]. They preempt all work
+   (survival before chores). RimWorld's reflex/constant think nodes."
+  [[::hungry? ::eat]])
 
-(defn- walk
-  "Walk one node, returning a job or nil. Priority: first valid child wins.
-   Conditional: descend only if the pred holds. Job-giver: call the giver."
-  [world pawn node]
-  (case (:type node)
-    :priority    (some #(walk world pawn %) (:children node))
-    :conditional (when ((preds (:pred node)) world pawn)
-                   (walk world pawn (:child node)))
-    :job-giver   ((givers (:give node)) world pawn)))
+(def work-types
+  "Ordered work types. The order is the COLUMN order, which is also the tiebreak
+   WITHIN a priority level. Each work type is a group of givers tried top-to-bottom
+   (RimWorld's WorkType -> WorkGivers). Add a work type here (then add its giver):
+   Mine/Grow/Cook slot in unchanged."
+  [{:id :build :label "Build" :givers [::construct ::deliver]}
+   {:id :haul  :label "Haul"  :givers [::haul]}])
+
+(def ^:const default-priority 3)   ; 1 = highest .. 4 = lowest; 0 / absent = disabled
+
+(def default-priorities
+  "Default per-pawn priorities: every work type enabled at the middle level, so an
+   un-customized pawn reproduces the previous fixed Build-then-Haul order."
+  (zipmap (map :id work-types) (repeat default-priority)))
+
+(def ^:private work-column
+  "work-type id -> its column index (the within-priority tiebreak)."
+  (into {} (map-indexed (fn [i wt] [(:id wt) i]) work-types)))
+
+(defn pawn-priorities
+  "A pawn's work-type -> priority map, merged over the defaults. A priority of 0
+   (or a work type the pawn explicitly disables) is OFF. Plain world state on the
+   pawn, so it saves for free."
+  [pawn]
+  (merge default-priorities (:work-priorities pawn)))
+
+(defn- enabled-work
+  "The pawn's ENABLED work types (priority > 0), most-urgent first: sorted by
+   (priority asc, column index), so a lower priority NUMBER wins and equal
+   priorities fall back to the work-types order."
+  [pawn]
+  (let [prios (pawn-priorities pawn)]
+    (->> work-types
+         (filter #(pos? (long (get prios (:id %) 0))))
+         (sort-by (juxt #(long (get prios (:id %))) #(work-column (:id %)))))))
+
+(defn- work-job
+  "First job from the pawn's enabled work types, scanned in priority order; within
+   a work type the givers are tried in their listed order. Nil when no enabled work
+   type yields a job."
+  [world pawn]
+  (some (fn [wt]
+          (some (fn [g] ((givers g) world pawn)) (:givers wt)))
+        (enabled-work pawn)))
 
 (defn deliberate
-  "Walk the think-tree for `pawn`; return the first job a leaf yields, or nil.
-   Pure. The 2-arg form uses `default-tree`; the 3-arg takes a custom tree."
-  ([world pawn] (deliberate world pawn default-tree))
-  ([world pawn tree] (walk world pawn tree)))
+  "Pure (world, pawn) -> job-or-nil. RimWorld's selection order: REFLEXES first
+   (eat when hungry, always wins), then the highest-PRIORITY enabled WORK type that
+   yields a job (the per-pawn :work-priorities matrix, see pawn-priorities), then
+   wander. The work order is per-pawn data now, not a hardcoded tree."
+  [world pawn]
+  (or (some (fn [[pred-key giver-key]]
+              (when ((preds pred-key) world pawn) ((givers giver-key) world pawn)))
+            reflexes)
+      (work-job world pawn)
+      (give-wander world pawn)))
