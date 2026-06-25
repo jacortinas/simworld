@@ -187,3 +187,53 @@
               (entity/add-entity (entity/make-building [1 0])))]
     (is (= 2 (count (entity/buildings w))))
     (is (every? #(= :building (:kind %)) (entity/buildings w)))))
+
+;; ---------------------------------------------------------------------------
+;; Blueprints -- a building DESIGNATED but not yet built (the construction loop).
+;; Same :kind :building as the finished structure (so it rides :kinds, footprint
+;; and selection for free), but :state :blueprint with its path-affecting flags
+;; stripped so the ghost never blocks paths or acts as a portal while unbuilt.
+;; ---------------------------------------------------------------------------
+
+(deftest make-blueprint-is-an-unbuilt-non-blocking-building
+  (let [bp (entity/make-blueprint :wall [2 3])]
+    (testing "shape: a building in the :blueprint state with empty progress"
+      (is (= :building (:kind bp)))
+      (is (= :wall (:def bp)))
+      (is (= :blueprint (:state bp)))
+      (is (= {} (:delivered bp)) "no material delivered yet")
+      (is (= 0 (:work-done bp)) "no construction work done yet")
+      (is (= [2 3] (:pos bp))))
+    (testing "path-affecting flags are stripped so the ghost never blocks paths"
+      (is (not (contains? bp :blocks-path?)) "a wall blueprint drops :blocks-path?")
+      (is (not (contains? bp :portal?)))
+      (is (not (contains? bp :open-ticks)))))
+  (testing "a door blueprint also strips its portal/open flags"
+    (let [bp (entity/make-blueprint :door [0 0])]
+      (is (= :blueprint (:state bp)))
+      (is (not (contains? bp :portal?)) "a door ghost is not yet a region portal")
+      (is (not (contains? bp :open-ticks))))))
+
+(deftest blueprint-reads-cost-and-work-from-its-def-not-its-instance
+  (testing "the bill and labor target live on the def, never copied onto the blueprint"
+    (let [bp (entity/make-blueprint :wall [0 0])]
+      (is (not (contains? bp :cost)) "cost is not stamped on the instance")
+      (is (not (contains? bp :work-to-build)))
+      (is (= {:stone 5} (:cost (defs/thing (:def bp)))) "read from the def at use time")
+      (is (= 120 (:work-to-build (defs/thing (:def bp))))))))
+
+(deftest blueprint?-and-built?-discriminate-state
+  (is (entity/blueprint? (entity/make-blueprint :wall [0 0])))
+  (is (not (entity/blueprint? (entity/make-building [0 0]))))
+  (is (entity/built? (entity/make-building [0 0])))
+  (is (not (entity/built? (entity/make-blueprint :wall [0 0])))))
+
+(deftest blueprints-query-filters-buildings-by-state
+  (testing "blueprints returns only unbuilt buildings; buildings returns both states"
+    (let [w (-> {:entities {} :kinds (entity/empty-kinds)}
+                (entity/add-entity (entity/make-building [0 0]))            ; built wall
+                (entity/add-entity (entity/make-blueprint :wall [1 0]))     ; ghost
+                (entity/add-entity (entity/make-blueprint :door [2 0])))]   ; ghost
+      (is (= 3 (count (entity/buildings w))) "buildings spans built + blueprint")
+      (is (= 2 (count (entity/blueprints w))) "blueprints filters to :state :blueprint")
+      (is (every? entity/blueprint? (entity/blueprints w))))))

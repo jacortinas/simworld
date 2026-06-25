@@ -53,8 +53,10 @@
 (s/def ::portal?      boolean?)                ; door: passable, but its own region (rooms boundary)
 (s/def ::open-ticks   (s/and number? pos?))    ; door: ticks to swing fully open
 (s/def ::size         (s/tuple (s/and int? pos?) (s/and int? pos?)))   ; building footprint [w h]
+(s/def ::work-to-build (s/and int? pos?))                              ; construction: ticks of labor to finish a blueprint
+(s/def ::cost         (s/map-of keyword? (s/and int? pos?)))           ; construction: material-keyword -> unit count (one item per unit)
 (s/def ::thing-entry (s/keys :req-un [::kind ::ticker-type]
-                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic ::blocks-path? ::portal? ::open-ticks ::size]))
+                             :opt-un [::move-ticks ::needs ::material ::traits ::skills ::graphic ::blocks-path? ::portal? ::open-ticks ::size ::cost ::work-to-build]))
 
 ;; --- graphic defs: sprite selection as content (the render-side axis) ---
 (s/def ::cell        (s/tuple keyword? nat-int? nat-int?))   ; [sheet col row]

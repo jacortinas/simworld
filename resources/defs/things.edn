@@ -12,8 +12,14 @@
  :wood     {:kind :item :ticker-type :long :material :wood  :graphic :wood}
  :food     {:kind :item :ticker-type :long :material :food  :graphic :apple}
  :stone    {:kind :item :ticker-type :long :material :stone :graphic :rock}
+ ;; :cost is the material bill a blueprint must be filled with before it can be
+ ;; built (a map of material-keyword -> unit count, one item entity per unit;
+ ;; there is no stack model). :work-to-build is how many sim ticks of construction
+ ;; labor finish it once the material is delivered. Both are read from the def at
+ ;; JOB time (sim.job), never copied onto a built instance (not in template-keys).
  :wall     {:kind :building :ticker-type :long :material :stone
-            :graphic :wall :blocks-path? true}
+            :graphic :wall :blocks-path? true
+            :cost {:stone 5} :work-to-build 120}
  ;; A door: a PASSABLE building (no path block) that the region layer treats as
  ;; its own 1-cell portal region. Passable for A* (pawns walk through), but a
  ;; flood barrier for regions, so the rooms it bounds stay distinct. :portal? is
@@ -22,4 +28,5 @@
  ;; wait that long at a closed door before stepping through (sim.door). 20 ticks
  ;; ~= 0.67s at 30 Hz. Open/closed is dynamic world state, NOT in the PathGrid.
  :door     {:kind :building :ticker-type :long :material :wood
-            :graphic :door :blocks-path? false :portal? true :open-ticks 20}}
+            :graphic :door :blocks-path? false :portal? true :open-ticks 20
+            :cost {:wood 3} :work-to-build 90}}

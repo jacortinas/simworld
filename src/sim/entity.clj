@@ -108,6 +108,37 @@
   (-> (make-thing :door pos)
       (assoc :state :built :open 0)))
 
+;; A blueprint: a building DESIGNATED but not yet built. Same :kind :building as
+;; the finished structure (so it rides the :kinds index, footprint, and selection
+;; for free), but in :state :blueprint and with its path-affecting flags STRIPPED
+;; (:blocks-path?/:portal?/:open-ticks): a ghost must not block pathing, act as a
+;; region portal, or be animated as a door. Those flags are restored only when the
+;; blueprint is PROMOTED to its built form (sim.job's :construct), which goes
+;; through remove-entity + add-entity so the (:kinds :building) set identity
+;; changes and the sim.pathgrid memo rebuilds (an in-place update would leave the
+;; finished wall non-blocking). :delivered tallies materials hauled to the site so
+;; far (material-kw -> count); :work-done accumulates construction labor. The bill
+;; (:cost) and labor target (:work-to-build) are read from the def at job time,
+;; never stamped on the instance.
+(defn make-blueprint
+  "Construct a blueprint of buildable def `def-id` at [x y]: a :state :blueprint
+   building that neither blocks paths nor acts as a portal while ghosted. Pure --
+   does NOT insert."
+  [def-id pos]
+  (-> (make-thing def-id pos)
+      (dissoc :blocks-path? :portal? :open-ticks)
+      (assoc :state :blueprint :delivered {} :work-done 0)))
+
+(defn blueprint?
+  "Is this entity an unbuilt blueprint?"
+  [e]
+  (= :blueprint (:state e)))
+
+(defn built?
+  "Is this entity a finished, built structure?"
+  [e]
+  (= :built (:state e)))
+
 ;; ---------------------------------------------------------------------------
 ;; Queries — operate on the world map.
 ;; Defined before any helpers that consume them so a cold-start load resolves
@@ -149,6 +180,13 @@
   "Sequence of all building entities, ascending by id."
   [world]
   (keep #(entity world %) (get-in world [:kinds :building])))
+
+(defn blueprints
+  "Sequence of all unbuilt blueprint buildings, ascending by id. Blueprints share
+   :kind :building with finished structures, so this filters `buildings` by
+   :state; callers wanting only built structures filter on `built?`."
+  [world]
+  (filter blueprint? (buildings world)))
 
 ;; ---------------------------------------------------------------------------
 ;; Building footprints. A building occupies its :size [w h] rectangle anchored at
