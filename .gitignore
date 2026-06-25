@@ -15,8 +15,12 @@ node_modules/
 saves/
 profiles/
 flamegraphs/
+.snapshots/
 *.npy
 *.hprof
+
+# clj-kondo downloads imported configs here; only config.edn is tracked
+.clj-kondo/imports/
 
 # OS
 .DS_Store

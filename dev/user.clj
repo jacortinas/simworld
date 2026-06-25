@@ -19,6 +19,7 @@
    [sim.pathfinding :as pathfinding]
    [sim.render    :as render]
    [sim.render.gdx :as gdx]
+   [sim.render.snapshot :as snapshot]
    [sim.ui-state  :as ui]
    [sim.tile      :as tile]
    [sim.entity    :as entity]
@@ -129,6 +130,21 @@
   "Return the live world value. Use this from the REPL — pprint it, drill
    in with get-in, hand it to clojure.inspector/inspect-tree, whatever."
   [] @world/world)
+
+(defn snap!
+  "Rasterize the live world to a PNG via the headless software renderer (no GL,
+   no window) and return the path. A second pure VIEW of the world, for eyeballing
+   sim state outside the GL loop. (name) writes `.snapshots/<name>.png`; or pass a
+   full path. opts pass through to snapshot/render-image (e.g. {:tile-px 24})."
+  ([] (snap! "world"))
+  ([name] (snap! name {}))
+  ([name opts]
+   (let [path (if (re-find #"[/.]" (str name))
+                (str name)
+                (str ".snapshots/" name ".png"))
+         out  (snapshot/write-png! @world/world path opts)]
+     (println "snapshot:" out)
+     out)))
 
 (defn reset-world!
   ([] (world/reset-world! {}))
