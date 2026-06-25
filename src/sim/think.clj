@@ -12,6 +12,7 @@
    [sim.defs        :as defs]
    [sim.entity      :as entity]
    [sim.job         :as job]
+   [sim.regions     :as regions]
    [sim.reservation :as reservation]
    [sim.rng         :as rng]
    [sim.tile        :as tile]
@@ -112,11 +113,18 @@
                 items       (->> (entity/items world)
                                  (filter #(and (:pos %)
                                                (contains? wanted-mats (:material %))
-                                               (reservation/reservable? claims (:id %) (:id pawn)))))]
+                                               (reservation/reservable? claims (:id %) (:id pawn))
+                                               (regions/reachable? world pos (:pos %)))))]
             (when (seq items)
               (let [item    (first (sort-by (juxt #(manhattan pos (:pos %)) :id) items))
                     mat     (:material item)
-                    targets (->> wants (filter (fn [[_ w]] (contains? w mat))) (map first))
+                    ;; only sites this item can actually reach, so a picked-up
+                    ;; delivery never dead-ends (which, pre-fix, would drop-and-retry
+                    ;; the same item forever).
+                    targets (->> wants
+                                 (filter (fn [[b w]] (and (contains? w mat)
+                                                          (regions/reachable? world (:pos item) (:pos b)))))
+                                 (map first))
                     bp      (first (sort-by (juxt #(manhattan (:pos item) (:pos %)) :id) targets))]
                 (when bp
                   (job/deliver (:id item) (:id bp)))))))))))
@@ -151,13 +159,21 @@
         pos    (:pos pawn)
         ready  (->> (entity/blueprints world)
                     (filter #(and (empty? (material-needs %))
-                                  (reservation/reservable? claims (:id %) (:id pawn)))))]
-    (when (seq ready)
-      (let [bp    (first (sort-by (juxt #(manhattan pos (:pos %)) :id) ready))
-            stand (first (sort-by (juxt #(manhattan pos %) identity)
-                                  (adjacent-stand-cells world bp)))]
-        (when stand
-          (job/construct (:id bp) stand))))))
+                                  (reservation/reservable? claims (:id %) (:id pawn)))))
+        ;; Pair each ready site with its nearest REACHABLE adjacent stand cell, and
+        ;; drop sites with none (boxed in / unreachable). Without this a single
+        ;; un-standable ready ghost would mask every buildable site nearer to it,
+        ;; and a doomed construct would walk-fail then re-pick the same site forever.
+        candidates (keep (fn [b]
+                           (when-let [stand (->> (adjacent-stand-cells world b)
+                                                 (filter #(regions/reachable? world pos %))
+                                                 (sort-by (juxt #(manhattan pos %) identity))
+                                                 first)]
+                             [b stand]))
+                         ready)]
+    (when (seq candidates)
+      (let [[bp stand] (first (sort-by (fn [[b _]] [(manhattan pos (:pos b)) (:id b)]) candidates))]
+        (job/construct (:id bp) stand)))))
 
 (def ^:const ^:private wander-radius 5)
 

@@ -154,10 +154,26 @@
                w))))
   nil)
 
+(defn- remove-building
+  "Remove building `b` from world `w`. If it is a partially-delivered BLUEPRINT,
+   first scatter its :delivered material back onto its cell as ground items, so
+   cancelling a designation REFUNDS the hauled resources (RimWorld's behavior)
+   instead of silently destroying them. (A player command, not the pure tick, so
+   minting item ids from the global counter here is fine.)"
+  [w b]
+  (-> (if (entity/blueprint? b)
+        (reduce-kv (fn [w material n]
+                     (reduce (fn [w _] (entity/add-entity w (entity/make-item material (:pos b))))
+                             w (range n)))
+                   w (:delivered b {}))
+        w)
+      (entity/remove-entity (:id b))))
+
 (defn deconstruct-span!
   "Remove every building intersecting the dragged line (start..current). The
    shift-drag erase twin of build-door-span!; building-at is footprint-aware, so
-   a multi-cell building is removed from any cell the line touches."
+   a multi-cell building is removed from any cell the line touches. A cancelled
+   blueprint refunds its delivered material (see remove-building)."
   [start current]
   (let [[[ox oy] [w h]] (door-span start current)
         ox (long ox) oy (long oy)
@@ -166,7 +182,7 @@
            (fn [wd]
              (reduce (fn [wd' [x y]]
                        (if-let [b (building-at wd' x y)]
-                         (entity/remove-entity wd' (:id b))
+                         (remove-building wd' b)
                          wd'))
                      wd
                      cells))))
@@ -180,6 +196,6 @@
   (swap! world/world
          (fn [w]
            (if-let [b (building-at w tx ty)]
-             (entity/remove-entity w (:id b))
+             (remove-building w b)
              w)))
   nil)

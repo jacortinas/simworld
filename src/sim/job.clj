@@ -216,6 +216,38 @@
     world
     (movement/set-job world (:id pawn) assoc :state :in-progress)))
 
+(defn- drop-carried
+  "If `pawn-id` is carrying an item, return it to the ground at the pawn's cell
+   (clear the pawn's :carrying, restore the item's :pos + :carried-by). A no-op if
+   not carrying, and a slot-clear if the carried item is already gone. Called on a
+   FAILED transition so a haul/deliver that fails AFTER pickup never leaks (loses)
+   the carried material: an orphaned :pos-nil item no giver would ever touch again."
+  [world pawn-id]
+  (let [pawn    (entity/entity world pawn-id)
+        item-id (:carrying pawn)]
+    (cond
+      (nil? item-id)                       world
+      (nil? (entity/entity world item-id)) (entity/update-entity world pawn-id assoc :carrying nil)
+      :else
+      (-> world
+          (entity/update-entity pawn-id assoc :carrying nil)
+          (entity/update-entity item-id assoc :carried-by nil :pos (:pos pawn))
+          (log/append {:type :job/drop :pawn pawn-id :item item-id :at (:pos pawn)})))))
+
+(defn- fail-carrying
+  "Drop any carried item, then mark the job :failed. The fail transition for any
+   job that may be carrying (haul, deliver) so failure is leak-free."
+  [world pawn-id]
+  (-> world (drop-carried pawn-id) (mark-state pawn-id :failed)))
+
+(defn- footprint-occupied?
+  "Is any pawn standing on building `b`'s footprint? The construct builder stands
+   ADJACENT, so this catches OTHER pawns (a deliverer mid-deposit, a passer-by, the
+   ghost cell is passable) that a promotion would otherwise seal inside the wall."
+  [world b]
+  (let [cells (set (entity/footprint b))]
+    (boolean (some #(cells (:pos %)) (entity/pawns world)))))
+
 ;; ---------------------------------------------------------------------------
 ;; advance: the public dispatch. (world, pawn) -> world.
 ;; ---------------------------------------------------------------------------
@@ -249,9 +281,9 @@
     (cond
       (done? job) world
 
-      ;; The item disappeared (eaten? despawned?) — fail.
+      ;; The item disappeared (eaten? despawned?): fail, dropping anything carried.
       (nil? item)
-      (mark-state world pid :failed)
+      (fail-carrying world pid)
 
       :else
       (case (:phase job)
@@ -290,7 +322,7 @@
         (let [[result world'] (movement/walk-toward world pawn (:destination job))]
           (case result
             :arrived (next-phase world' pid :drop)
-            :failed  (mark-state world' pid :failed)
+            :failed  (fail-carrying world' pid)
             :walking world'))
 
         :drop
@@ -353,9 +385,10 @@
       (done? job) world
 
       ;; The material vanished, or the blueprint was cancelled / already built by
-      ;; someone else (its id is gone after the build's remove+add): fail.
+      ;; someone else (it is now :built, not a blueprint): fail, dropping any
+      ;; carried material so it is not lost.
       (or (nil? item) (nil? bp) (not (entity/blueprint? bp)))
-      (mark-state world pid :failed)
+      (fail-carrying world pid)
 
       :else
       (case (:phase job)
@@ -389,7 +422,7 @@
         (let [[result world'] (movement/walk-toward world pawn (:pos bp))]
           (case result
             :arrived (next-phase world' pid :deposit)
-            :failed  (mark-state world' pid :failed)
+            :failed  (fail-carrying world' pid)
             :walking world'))
 
         :deposit
@@ -434,15 +467,23 @@
 
         :build
         ;; Accumulate one tick of work; on reaching the def's :work-to-build,
-        ;; PROMOTE the blueprint to its built form via remove-entity + add-entity.
-        ;; The remove+add is load-bearing: it changes the (:kinds :building) set
-        ;; identity so the sim.pathgrid memo rebuilds and the finished wall blocks
-        ;; paths (an in-place update would leave it non-blocking).
+        ;; PROMOTE the blueprint via remove-entity + add-entity (entity/promote-
+        ;; blueprint reuses the id, so the tick mints no id and stays pure, yet
+        ;; disj-then-conj still changes the (:kinds :building) set object so the
+        ;; pathgrid memo rebuilds and the finished wall blocks paths).
         (let [work-to (long (:work-to-build (defs/thing (:def bp)) 1))
               done    (inc (long (:work-done bp 0)))]
-          (if (>= done work-to)
-            (let [built (cond-> (entity/make-built (:def bp) (:pos bp))
-                          (:size bp) (assoc :size (:size bp)))]
+          (cond
+            (< done work-to)
+            (entity/update-entity world bp-id assoc :work-done done)
+
+            ;; Work is done, but a pawn stands on the footprint: hold at the cap
+            ;; and re-poll next tick rather than seal it inside the new wall.
+            (footprint-occupied? world bp)
+            (entity/update-entity world bp-id assoc :work-done work-to)
+
+            :else
+            (let [built (entity/promote-blueprint bp)]
               (-> world
                   (entity/remove-entity bp-id)
                   (entity/add-entity built)
@@ -451,5 +492,4 @@
                                :blueprint bp-id
                                :building  (:def bp)
                                :at        (:pos bp)})
-                  (mark-state pid :complete)))
-            (entity/update-entity world bp-id assoc :work-done done)))))))
+                  (mark-state pid :complete)))))))))

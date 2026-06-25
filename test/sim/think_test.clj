@@ -293,3 +293,57 @@
                        (entity/add-entity (entity/make-item :stone [2 0])))
           j        (think/deliberate w (entity/entity w pid))]
       (is (= :construct (:type j)) "finish-ready beats fetch-more-material beats stockpile"))))
+
+;; ---------------------------------------------------------------------------
+;; Review-fix coverage: the over-delivery cap under concurrency, and the
+;; reachability guards that stop doomed deliver/construct jobs busy-looping.
+;; ---------------------------------------------------------------------------
+
+(deftest over-delivery-cap-holds-across-two-idle-pawns
+  (testing "two idle pawns + a site needing one more unit -> exactly one delivery is minted"
+    (let [w0 (world/initial-world {:width 12 :height 12})
+          a  (entity/make-pawn "A" [0 0])
+          b  (entity/make-pawn "B" [1 0])
+          bp (assoc (entity/make-blueprint :wall [6 0]) :delivered {:stone 4})  ; needs 1 more
+          w  (-> w0
+                 (entity/add-entity a) (entity/add-entity b) (entity/add-entity bp)
+                 (entity/add-entity (entity/make-item :stone [2 0]))
+                 (entity/add-entity (entity/make-item :stone [3 0])))
+          ;; deliberate+assign both in sequence, as the redeliberate system would
+          w1 (reduce (fn [w pid]
+                       (if-let [j (think/deliberate w (entity/entity w pid))]
+                         (job/assign w pid j)
+                         w))
+                     w [(:id a) (:id b)])
+          delivers (->> [(:id a) (:id b)]
+                        (keep #(:job (entity/entity w1 %)))
+                        (filter #(= :deliver (:type %))))]
+      (is (= 1 (count delivers))
+          "the cap (in-flight count) stops the second pawn over-fetching for a 1-short site"))))
+
+(deftest construct-giver-skips-a-boxed-in-ready-blueprint
+  (testing "a ready site with no REACHABLE adjacent cell does not become a doomed construct"
+    (let [w0     (world/initial-world {:width 7 :height 7})
+          boxed  (assoc (entity/make-blueprint :wall [3 3]) :delivered {:stone 5})
+          ring   (for [dx [-1 0 1] dy [-1 0 1] :when (not (and (zero? dx) (zero? dy)))]
+                   [(+ 3 dx) (+ 3 dy)])
+          w1     (reduce (fn [w c] (entity/add-entity w (entity/make-building c)))
+                         (entity/add-entity w0 boxed) ring)
+          p      (entity/make-pawn "P" [0 0])
+          w      (entity/add-entity w1 p)
+          j      (think/deliberate w (entity/entity w (:id p)))]
+      (is (not= :construct (:type j)) "no reachable stand cell -> no construct (no busy-loop)"))))
+
+(deftest deliver-giver-skips-unreachable-material
+  (testing "material walled off from the pawn is not chosen (no pickup-then-fail loop)"
+    (let [w0 (world/initial-world {:width 7 :height 7})
+          bp (entity/make-blueprint :wall [6 6])
+          ;; a full vertical wall at x=3 splits the map; stone + site on the far side
+          w1 (reduce (fn [w y] (entity/add-entity w (entity/make-building [3 y])))
+                     (-> w0 (entity/add-entity bp)
+                            (entity/add-entity (entity/make-item :stone [5 5])))
+                     (range 7))
+          p  (entity/make-pawn "P" [0 0])                 ; near side
+          w  (entity/add-entity w1 p)
+          j  (think/deliberate w (entity/entity w (:id p)))]
+      (is (not= :deliver (:type j)) "the only stone is unreachable, so no delivery is attempted"))))

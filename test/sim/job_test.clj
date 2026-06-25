@@ -183,7 +183,7 @@
         pawn  (entity/entity wf pid)
         built (first (filter entity/built? (entity/buildings wf)))]
     (is (job/complete? (:job pawn))         "construct reaches :complete")
-    (is (nil? (entity/entity wf bid))       "the blueprint id is gone (promoted)")
+    (is (entity/built? (entity/entity wf bid)) "the blueprint id now holds the built wall (id reused for a pure tick)")
     (is (some? built)                       "a built wall now exists")
     (is (= [5 5] (:pos built))              "at the blueprint's position")
     (is (true? (:blocks-path? built))       "the finished wall blocks paths")
@@ -206,6 +206,60 @@
         w2   (entity/remove-entity w1 bid)
         w3   (job/advance w2 (entity/entity w2 pid))]
     (is (job/failed? (:job (entity/entity w3 pid))))))
+
+(deftest deliver-failure-drops-carried-material-not-leaks-it
+  (testing "a deliver that fails WHILE carrying returns the material to the ground"
+    (let [[w0 pid iid bid] (setup-deliver [6 0] [3 0] [6 0])
+          w1   (-> w0
+                   (entity/update-entity pid assoc :carrying iid
+                                         :job (assoc (job/deliver iid bid)
+                                                     :phase :go-to-dest :state :in-progress))
+                   (entity/update-entity iid assoc :carried-by pid :pos nil)
+                   (entity/remove-entity bid))               ; blueprint built/cancelled out from under it
+          w2   (job/advance w1 (entity/entity w1 pid))
+          pawn (entity/entity w2 pid)
+          item (entity/entity w2 iid)]
+      (is (job/failed? (:job pawn))  "the job fails")
+      (is (nil? (:carrying pawn))    "pawn stops carrying")
+      (is (some? item)               "the material item still exists (NOT leaked)")
+      (is (= [6 0] (:pos item))      "dropped back at the pawn's cell")
+      (is (nil? (:carried-by item))  "and is free to be hauled again"))))
+
+(deftest construct-defers-promotion-while-footprint-occupied
+  (testing "a finished build holds rather than sealing a pawn standing on the cell"
+    (let [[w0 pid bid] (setup-construct [4 5] [5 5])
+          other (entity/make-pawn "passer" [5 5])             ; standing ON the ghost cell
+          w1 (-> w0
+                 (entity/add-entity other)
+                 (entity/update-entity pid assoc :job
+                                       (assoc (job/construct bid [4 5]) :phase :build :state :in-progress))
+                 (entity/update-entity bid assoc :work-done 119))   ; one tick from done
+          w2 (reduce (fn [w _] (job/advance w (entity/entity w pid))) w1 (range 5))]
+      (is (entity/blueprint? (entity/entity w2 bid)) "still a blueprint; not sealed over the pawn")
+      (is (pathgrid/passable? (pathgrid/for-world w2) 5 5) "cell stays passable while occupied")
+      (testing "once the occupant steps off, it promotes"
+        (let [w3 (entity/move-entity w2 (:id other) [5 6])
+              w4 (job/advance w3 (entity/entity w3 pid))]
+          (is (entity/built? (entity/entity w4 bid)) "promotes once the cell clears")
+          (is (not (pathgrid/passable? (pathgrid/for-world w4) 5 5))))))))
+
+(deftest construct-door-blueprint-promotes-with-portal-and-size
+  (testing "a multi-cell door blueprint builds into a portal door, flags + :size restored"
+    (let [w0   (world/initial-world {:width 12 :height 12})
+          pawn (entity/make-pawn "builder" [0 5])
+          bp   (-> (entity/make-blueprint :door [4 5]) (assoc :size [3 1] :delivered {:wood 3}))
+          pid  (:id pawn) bid (:id bp)
+          w1   (-> w0 (entity/add-entity pawn) (entity/add-entity bp)
+                   (entity/update-entity pid assoc :job (job/construct bid [3 5])))
+          wf   (drive w1 pid 400)
+          door (entity/entity wf bid)]
+      (is (entity/built? door)          "the door is built")
+      (is (= :door (:def door)))
+      (is (true? (:portal? door))       "portal flag restored from the def")
+      (is (= 20 (:open-ticks door))     "open-ticks restored from the def")
+      (is (= 0 (:open door))            "starts closed")
+      (is (= [3 1] (:size door))        "multi-cell footprint preserved")
+      (is (false? (:blocks-path? door)) "a door does not block paths"))))
 
 (deftest go-to-completes
   (let [[w0 pid _] (setup [0 0] [0 0])

@@ -100,6 +100,23 @@
   (cond-> (assoc (make-thing def-id pos) :state :built)
     (:open-ticks (defs/thing def-id)) (assoc :open 0)))
 
+(defn promote-blueprint
+  "The BUILT form of blueprint `b`, REUSING its id and pos. Re-applies the def
+   template so the path flags make-blueprint stripped (:blocks-path? / :portal? /
+   :open-ticks) are restored; a door re-closes (:open 0); a multi-cell :size is
+   preserved. Promotion is remove-entity + add-entity of this value: reusing the id
+   mints NO new id (so the tick stays a pure world->world fn, no global-counter
+   side effect mid-tick), yet disj-then-conj still changes the (:kinds :building)
+   set OBJECT, so the identity-keyed sim.pathgrid memo rebuilds and the finished
+   wall blocks paths. Pure."
+  [b]
+  (let [def-id (:def b)
+        d      (defs/thing def-id)]
+    (cond-> (-> (select-keys d template-keys)
+                (assoc :id (:id b) :def def-id :pos (:pos b) :state :built))
+      (:size b)       (assoc :size (:size b))
+      (:open-ticks d) (assoc :open 0))))
+
 (defn make-building
   "Construct a built wall (the :wall thing-def) at [x y]. Pure -- does NOT insert."
   [pos]
